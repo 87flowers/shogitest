@@ -257,21 +257,15 @@ impl Move {
                 b'R' => PieceType::Rook,
                 _ => return None,
             };
-            let Some(to) = Square::parse(bytes[2], bytes[3]) else {
-                return None;
-            };
+            let to = Square::parse(bytes[2], bytes[3])?;
             Some(Move::Drop(pt, to))
         } else {
             if s.len() == 5 && bytes[4] != b'+' {
                 return None;
             }
             let promo = s.len() == 5;
-            let Some(from) = Square::parse(bytes[0], bytes[1]) else {
-                return None;
-            };
-            let Some(to) = Square::parse(bytes[2], bytes[3]) else {
-                return None;
-            };
+            let from = Square::parse(bytes[0], bytes[1])?;
+            let to = Square::parse(bytes[2], bytes[3])?;
             Some(Move::Move { from, to, promo })
         }
     }
@@ -319,7 +313,7 @@ impl Hand {
         }
     }
 
-    pub fn from_parse(&mut self, pt: PieceType, modifier: Option<usize>) {
+    fn from_parse(&mut self, pt: PieceType, modifier: Option<usize>) {
         let count = modifier.unwrap_or_else(|| 1) as u8;
         match pt {
             PieceType::Rook => self.rook = count,
