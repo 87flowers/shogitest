@@ -60,7 +60,7 @@ impl Square {
     }
 
     pub fn parse(c0: u8, c1: u8) -> Option<Square> {
-        if c0 < b'1' || c0 > b'9' || c1 < b'a' || c1 > b'i' {
+        if !(b'1'..=b'9').contains(&c0) || !(b'a'..=b'i').contains(&c1) {
             return None;
         }
         let file = c0 - b'1';
@@ -221,7 +221,7 @@ pub enum Move {
     Win,
     Resign,
     Drop(PieceType, Square),
-    Move {
+    Normal {
         from: Square,
         to: Square,
         promo: bool,
@@ -266,7 +266,7 @@ impl Move {
             let promo = s.len() == 5;
             let from = Square::parse(bytes[0], bytes[1])?;
             let to = Square::parse(bytes[2], bytes[3])?;
-            Some(Move::Move { from, to, promo })
+            Some(Move::Normal { from, to, promo })
         }
     }
 }
@@ -274,7 +274,7 @@ impl Move {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Place(Color, PieceType);
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub struct Hand {
     rook: u8,
     bishop: u8,
@@ -283,20 +283,6 @@ pub struct Hand {
     knight: u8,
     lance: u8,
     pawn: u8,
-}
-
-impl Default for Hand {
-    fn default() -> Self {
-        Hand {
-            rook: 0,
-            bishop: 0,
-            gold: 0,
-            silver: 0,
-            knight: 0,
-            lance: 0,
-            pawn: 0,
-        }
-    }
 }
 
 impl Hand {
@@ -313,8 +299,8 @@ impl Hand {
         }
     }
 
-    fn from_parse(&mut self, pt: PieceType, modifier: Option<usize>) {
-        let count = modifier.unwrap_or_else(|| 1) as u8;
+    fn set_from_parse(&mut self, pt: PieceType, modifier: Option<usize>) {
+        let count = modifier.unwrap_or(1) as u8;
         match pt {
             PieceType::Rook => self.rook = count,
             PieceType::Bishop => self.bishop = count,
@@ -366,7 +352,7 @@ impl Position {
         let color = it.next()?;
         let hand = it.next()?;
         let ply = it.next()?;
-        if it.next() == None {
+        if it.next().is_none() {
             Position::parse_parts(board, color, hand, ply)
         } else {
             None
@@ -467,35 +453,35 @@ impl Position {
         for ch in s.bytes() {
             match ch {
                 b'0'..=b'9' => {
-                    if modifier == None && ch == b'0' {
+                    if modifier.is_none() && ch == b'0' {
                         return None;
                     }
-                    modifier = Some(modifier.unwrap_or_else(|| 0) * 10 + (ch - b'0') as usize);
+                    modifier = Some(modifier.unwrap_or(0) * 10 + (ch - b'0') as usize);
                     if modifier > Some(18) {
                         return None;
                     }
                     continue;
                 }
-                b'p' => hand[Color::Gote.to_index()].from_parse(PieceType::Pawn, modifier),
-                b'b' => hand[Color::Gote.to_index()].from_parse(PieceType::Bishop, modifier),
-                b'r' => hand[Color::Gote.to_index()].from_parse(PieceType::Rook, modifier),
-                b'l' => hand[Color::Gote.to_index()].from_parse(PieceType::Lance, modifier),
-                b'n' => hand[Color::Gote.to_index()].from_parse(PieceType::Knight, modifier),
-                b's' => hand[Color::Gote.to_index()].from_parse(PieceType::Silver, modifier),
-                b'g' => hand[Color::Gote.to_index()].from_parse(PieceType::Gold, modifier),
-                b'P' => hand[Color::Sente.to_index()].from_parse(PieceType::Pawn, modifier),
-                b'B' => hand[Color::Sente.to_index()].from_parse(PieceType::Bishop, modifier),
-                b'R' => hand[Color::Sente.to_index()].from_parse(PieceType::Rook, modifier),
-                b'L' => hand[Color::Sente.to_index()].from_parse(PieceType::Lance, modifier),
-                b'N' => hand[Color::Sente.to_index()].from_parse(PieceType::Knight, modifier),
-                b'S' => hand[Color::Sente.to_index()].from_parse(PieceType::Silver, modifier),
-                b'G' => hand[Color::Sente.to_index()].from_parse(PieceType::Gold, modifier),
+                b'p' => hand[Color::Gote.to_index()].set_from_parse(PieceType::Pawn, modifier),
+                b'b' => hand[Color::Gote.to_index()].set_from_parse(PieceType::Bishop, modifier),
+                b'r' => hand[Color::Gote.to_index()].set_from_parse(PieceType::Rook, modifier),
+                b'l' => hand[Color::Gote.to_index()].set_from_parse(PieceType::Lance, modifier),
+                b'n' => hand[Color::Gote.to_index()].set_from_parse(PieceType::Knight, modifier),
+                b's' => hand[Color::Gote.to_index()].set_from_parse(PieceType::Silver, modifier),
+                b'g' => hand[Color::Gote.to_index()].set_from_parse(PieceType::Gold, modifier),
+                b'P' => hand[Color::Sente.to_index()].set_from_parse(PieceType::Pawn, modifier),
+                b'B' => hand[Color::Sente.to_index()].set_from_parse(PieceType::Bishop, modifier),
+                b'R' => hand[Color::Sente.to_index()].set_from_parse(PieceType::Rook, modifier),
+                b'L' => hand[Color::Sente.to_index()].set_from_parse(PieceType::Lance, modifier),
+                b'N' => hand[Color::Sente.to_index()].set_from_parse(PieceType::Knight, modifier),
+                b'S' => hand[Color::Sente.to_index()].set_from_parse(PieceType::Silver, modifier),
+                b'G' => hand[Color::Sente.to_index()].set_from_parse(PieceType::Gold, modifier),
                 _ => return None,
             }
             modifier = None;
         }
 
-        if modifier != None {
+        if modifier.is_some() {
             return None;
         }
 
@@ -511,7 +497,7 @@ mod tests {
     fn move_parse_test() {
         assert_eq!(
             Move::parse("1a2b+").unwrap(),
-            Move::Move {
+            Move::Normal {
                 from: Square::parse(b'1', b'a').unwrap(),
                 to: Square::parse(b'2', b'b').unwrap(),
                 promo: true
