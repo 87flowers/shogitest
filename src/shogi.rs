@@ -411,15 +411,15 @@ pub struct Hand {
 }
 
 impl Hand {
-    pub fn get(&self, pt: PieceType) -> &u8 {
+    pub fn get(&self, pt: PieceType) -> u8 {
         match pt {
-            PieceType::Rook => &self.rook,
-            PieceType::Bishop => &self.bishop,
-            PieceType::Gold => &self.gold,
-            PieceType::Silver => &self.silver,
-            PieceType::Knight => &self.knight,
-            PieceType::Lance => &self.lance,
-            PieceType::Pawn => &self.pawn,
+            PieceType::Rook => self.rook,
+            PieceType::Bishop => self.bishop,
+            PieceType::Gold => self.gold,
+            PieceType::Silver => self.silver,
+            PieceType::Knight => self.knight,
+            PieceType::Lance => self.lance,
+            PieceType::Pawn => self.pawn,
             _ => panic!(),
         }
     }
@@ -907,6 +907,152 @@ impl fmt::Display for Position {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum GameOutcome {
+    Undetermined,
+    Checkmated(Color),
+    WinInImpasse(Color),
+    DrawBySennichite,
+    LossByPerpetual(Color),
+    LossByIllegal(Color),
+    Resignation(Color),
+    LossByClock(Color),
+    LossByDisconnection(Color),
+}
+
+#[derive(Debug)]
+pub struct Game {
+    current_position: Position,
+    moves: Vec<Move>,
+    history: Vec<Position>,
+    last_not_in_check_ply: [isize; 2],
+}
+
+impl Game {
+    pub fn new(startpos: Position) -> Game {
+        assert!(!startpos.is_in_check());
+        Game {
+            current_position: startpos,
+            moves: vec![],
+            history: vec![startpos],
+            last_not_in_check_ply: [-1, -1],
+        }
+    }
+
+    pub fn do_move(&mut self, m: Move) -> GameOutcome {
+        let stm = self.current_position.stm;
+
+        self.moves.push(m);
+
+        if m == Move::Resign {
+            return GameOutcome::Resignation(stm);
+        }
+
+        if m == Move::Win {
+            return if self.valid_impasse_win_declaration() {
+                GameOutcome::WinInImpasse(stm)
+            } else {
+                GameOutcome::LossByIllegal(stm)
+            };
+        }
+
+        if let Some(next_position) = self.current_position.do_move(m) {
+            self.current_position = next_position;
+            self.history.push(next_position);
+        } else {
+            return GameOutcome::LossByIllegal(stm);
+        }
+
+        assert!(stm != self.current_position.stm);
+        let stm = self.current_position.stm;
+
+        match self.current_position.get_check_state() {
+            CheckState::None => {
+                self.last_not_in_check_ply[stm.to_index()] = (self.history.len() - 1) as isize
+            }
+            CheckState::Check => {}
+            CheckState::Checkmate => return GameOutcome::Checkmated(stm),
+        }
+
+        let (num_clones, first_clone) = {
+            let mut num_clones = 0;
+            let mut i = self.history.len() - 1;
+            let mut first_clone = i;
+            loop {
+                if self.history[i].is_clone_of(&self.current_position) {
+                    num_clones += 1;
+                    first_clone = i;
+                }
+                if i < 2 {
+                    break;
+                }
+                i -= 2;
+            }
+            (num_clones, first_clone as isize)
+        };
+
+        if num_clones < 4 {
+            GameOutcome::Undetermined
+        } else if self.last_not_in_check_ply[stm.to_index()] < first_clone {
+            GameOutcome::LossByPerpetual(!stm)
+        } else {
+            GameOutcome::DrawBySennichite
+        }
+    }
+
+    fn valid_impasse_win_declaration(&self) -> bool {
+        let stm = self.current_position.stm;
+        let pos = self.current_position;
+
+        let ptype_points = |pt: &PieceType| match pt.demote() {
+            PieceType::None => 0,
+            PieceType::King => 0,
+            PieceType::Rook | PieceType::Bishop => 5,
+            PieceType::Pawn
+            | PieceType::Lance
+            | PieceType::Knight
+            | PieceType::Silver
+            | PieceType::Gold => 1,
+            _ => panic!("should be unreachable"),
+        };
+
+        if !pos.king_sq(stm).is_promo_square(stm) {
+            return false;
+        }
+        if pos.get_check_state() != CheckState::None {
+            return false;
+        }
+
+        let pieces: Vec<PieceType> = pos
+            .board
+            .iter()
+            .filter(|p| p.0 == stm && p.1 != PieceType::None)
+            .map(|p| p.1)
+            .collect();
+
+        let piece_count = pieces.len();
+        let board_points: usize = pieces.iter().map(ptype_points).sum();
+        let hand_points: usize = [
+            PieceType::Rook,
+            PieceType::Bishop,
+            PieceType::Pawn,
+            PieceType::Lance,
+            PieceType::Knight,
+            PieceType::Silver,
+            PieceType::Gold,
+        ]
+        .iter()
+        .map(|pt| pos.hand[stm.to_index()].get(*pt) as usize * ptype_points(pt))
+        .sum();
+        let points = board_points + hand_points;
+
+        match stm {
+            Color::Sente => piece_count >= 10 && points >= 28,
+            Color::Gote => piece_count >= 10 && points >= 27,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1012,5 +1158,38 @@ mod tests {
             "9/9/9/3k5/9/5K3/9/9/9 b RB2G2S2N2L9Prb2g2s2n2l9p 1",
             vec![1, 524, 248257], // 112911856
         );
+    }
+
+    #[test]
+    fn test_outcome() {
+        let cases = vec![
+            (
+                "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+                "2h7h 8b9b 7h6h 9b8b 6h7h 8b9b 7h6h 9b8b 6h7h 8b9b 7h6h 9b8b",
+                "6h7h",
+                GameOutcome::DrawBySennichite,
+            ),
+            (
+                "l7l/g1S6/k1n4pp/ppN3p2/2p4P1/P2P1bP2/KSN5P/1G7/L1bS4L w 2RSN5P2g2p 1",
+                "G*8i R*7h 8i8h 7h8h G*8i G*7h 8i8h 7h8h G*8i G*7h 8i8h 7h8h G*8i G*7h 8i8h 7h8h G*8i G*7h",
+                "8i8h",
+                GameOutcome::DrawBySennichite,
+            ),
+        ];
+        for (sfen, moves, last_move, expected_outcome) in cases {
+            println!("{sfen}");
+            let position = Position::parse(sfen).unwrap();
+            let mut game = Game::new(position);
+            for mstr in moves.split(' ') {
+                let m = Move::parse(mstr).unwrap();
+                let intermediate_outcome = game.do_move(m);
+                println!("{m}: {:?}", intermediate_outcome);
+                assert_eq!(intermediate_outcome, GameOutcome::Undetermined);
+            }
+            let m = Move::parse(last_move).unwrap();
+            let final_outcome = game.do_move(m);
+            println!("{m}: {:?}", final_outcome);
+            assert_eq!(final_outcome, expected_outcome);
+        }
     }
 }
