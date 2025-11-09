@@ -71,7 +71,7 @@ impl Engine {
     }
 
     pub fn write_line(&mut self, line: &str) -> Result<()> {
-        writeln!(self.stdin, "{}", line)
+        writeln!(self.stdin, "{line}")
     }
 
     pub fn flush(&mut self) -> Result<()> {

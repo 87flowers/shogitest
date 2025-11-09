@@ -354,7 +354,7 @@ impl fmt::Display for Move {
 
 lazy_static! {
     static ref ALL_MOVES: Vec<Move> = {
-        let sq: Vec<Square> = (0..81).map(|i| Square(i)).collect();
+        let sq: Vec<Square> = (0..81).map(Square).collect();
         let drop_ptypes: Vec<PieceType> = vec![
             PieceType::Pawn,
             PieceType::Bishop,
@@ -504,7 +504,7 @@ impl Position {
     pub fn is_in_check(&self) -> bool {
         let king_sq = self.king_sq(self.stm);
         (0..81)
-            .map(|i| Square(i))
+            .map(Square)
             .filter(|&sq| self.is_enemy(sq))
             .any(|sq| self.piece_has_ray_to(sq, king_sq))
     }
@@ -662,7 +662,7 @@ impl Position {
         ALL_MOVES
             .iter()
             .filter(|&&m| self.is_legal(m))
-            .map(|&m| m)
+            .copied()
             .collect()
     }
 
