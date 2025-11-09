@@ -920,6 +920,30 @@ pub enum GameOutcome {
     LossByDisconnection(Color),
 }
 
+impl GameOutcome {
+    pub fn is_determined(self) -> bool {
+        self != GameOutcome::Undetermined
+    }
+
+    pub fn winner(self) -> Option<Color> {
+        match self {
+            GameOutcome::Undetermined => None,
+            GameOutcome::Checkmated(color) => Some(!color),
+            GameOutcome::WinInImpasse(color) => Some(color),
+            GameOutcome::DrawBySennichite => None,
+            GameOutcome::LossByPerpetual(color) => Some(!color),
+            GameOutcome::LossByIllegal(color) => Some(!color),
+            GameOutcome::Resignation(color) => Some(!color),
+            GameOutcome::LossByClock(color) => Some(!color),
+            GameOutcome::LossByDisconnection(color) => Some(!color),
+        }
+    }
+
+    pub fn is_draw(self) -> bool {
+        self.is_determined() && self.winner().is_none()
+    }
+}
+
 #[derive(Debug)]
 pub struct Game {
     current_position: Position,
