@@ -1,5 +1,7 @@
+use itertools::iproduct;
+use lazy_static::lazy_static;
 use std::fmt;
-use std::ops::Not;
+use std::ops;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Color {
@@ -37,7 +39,7 @@ impl fmt::Display for Color {
     }
 }
 
-impl Not for Color {
+impl ops::Not for Color {
     type Output = Self;
 
     fn not(self) -> Self::Output {
@@ -53,10 +55,13 @@ impl Not for Color {
 pub struct Square(u8);
 
 impl Square {
-    pub fn new(file: i8, rank: i8) -> Square {
+    pub fn new(file: i8, rank: i8) -> Option<Square> {
         let value = rank * 9 + file;
-        assert!(value < 81);
-        Square(value as u8)
+        if (0..=8).contains(&rank) && (0..=8).contains(&file) {
+            Some(Square(value as u8))
+        } else {
+            None
+        }
     }
 
     pub fn parse(c0: u8, c1: u8) -> Option<Square> {
@@ -65,10 +70,10 @@ impl Square {
         }
         let file = c0 - b'1';
         let rank = c1 - b'a';
-        Some(Self::new(file as i8, rank as i8))
+        Self::new(file as i8, rank as i8)
     }
 
-    pub fn from_fen_ordering(i: usize) -> Square {
+    pub fn from_fen_ordering(i: usize) -> Option<Square> {
         let file = (8 - i % 9) as i8;
         let rank = (i / 9) as i8;
         Square::new(file, rank)
@@ -84,6 +89,36 @@ impl Square {
 
     pub fn to_index(self) -> usize {
         self.0 as usize
+    }
+
+    pub fn normalize_to_sente(self, current_color: Color) -> Square {
+        Square(match current_color {
+            Color::Sente => self.0,
+            Color::Gote => 80 - self.0,
+        })
+    }
+
+    pub fn is_promo_square(self, color: Color) -> bool {
+        self.normalize_to_sente(color).0 < 27
+    }
+}
+
+impl ops::Sub for Square {
+    type Output = Delta;
+
+    fn sub(self, other: Self) -> Self::Output {
+        Delta {
+            file: self.file() - other.file(),
+            rank: self.rank() - other.rank(),
+        }
+    }
+}
+
+impl ops::Add<Delta> for Square {
+    type Output = Option<Square>;
+
+    fn add(self, other: Delta) -> Self::Output {
+        Square::new(self.file() - other.file, self.rank() - other.rank)
     }
 }
 
@@ -119,8 +154,40 @@ impl Delta {
         }
     }
 
+    pub fn signum(self) -> Delta {
+        Delta {
+            file: self.file.signum(),
+            rank: self.rank.signum(),
+        }
+    }
+
     pub fn is_ring(self) -> bool {
         self.file != 0 && self.rank != 0 && self.file.abs() <= 1 && self.rank.abs() <= 1
+    }
+
+    pub fn could_be_piece_move(self, color: Color, pt: PieceType) -> bool {
+        let d = self.normalize_to_sente(color);
+        if d.rank == 0 && d.file == 0 {
+            return false;
+        }
+        let is_ring = self.is_ring();
+        match pt {
+            PieceType::None => false,
+            PieceType::King => is_ring,
+            PieceType::Rook => d.rank == 0 || d.file == 0,
+            PieceType::Dragon => is_ring || d.rank == 0 || d.file == 0,
+            PieceType::Bishop => d.rank.abs() == d.file.abs(),
+            PieceType::Horse => is_ring || d.rank.abs() == d.file.abs(),
+            PieceType::Knight => d.rank == 2 && d.file.abs() == 1,
+            PieceType::Lance => d.file == 0 && d.rank > 0,
+            PieceType::Pawn => d.file == 0 && d.rank == 1,
+            PieceType::Silver => is_ring && (d.rank == 1 || d.rank.abs() == d.file.abs()),
+            PieceType::Gold
+            | PieceType::Tokin
+            | PieceType::NariLance
+            | PieceType::NariSilver
+            | PieceType::NariKnight => is_ring && (d.rank == 1 || d.rank == 0 || d.file == 0),
+        }
     }
 }
 
@@ -271,8 +338,40 @@ impl Move {
     }
 }
 
+lazy_static! {
+    static ref ALL_MOVES: Vec<Move> = {
+        let sq: Vec<Square> = (0..81).map(|i| Square(i)).collect();
+        let drop_ptypes: Vec<PieceType> = vec![
+            PieceType::Pawn,
+            PieceType::Bishop,
+            PieceType::Rook,
+            PieceType::Lance,
+            PieceType::Knight,
+            PieceType::Silver,
+            PieceType::Gold,
+        ];
+        let bools: Vec<bool> = vec![false, true];
+        let mut res = Vec::<Move>::new();
+        res.extend(
+            iproduct!(&sq, &sq, &bools).map(|(&from, &to, &promo)| Move::Normal {
+                from,
+                to,
+                promo,
+            }),
+        );
+        res.extend(iproduct!(&drop_ptypes, &sq).map(|(&pt, &sq)| Move::Drop(pt, sq)));
+        res
+    };
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Place(Color, PieceType);
+
+impl Default for Place {
+    fn default() -> Self {
+        Place(Color::Sente, PieceType::None)
+    }
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub struct Hand {
@@ -299,6 +398,19 @@ impl Hand {
         }
     }
 
+    pub fn get_mut(&mut self, pt: PieceType) -> &mut u8 {
+        match pt {
+            PieceType::Rook => &mut self.rook,
+            PieceType::Bishop => &mut self.bishop,
+            PieceType::Gold => &mut self.gold,
+            PieceType::Silver => &mut self.silver,
+            PieceType::Knight => &mut self.knight,
+            PieceType::Lance => &mut self.lance,
+            PieceType::Pawn => &mut self.pawn,
+            _ => panic!(),
+        }
+    }
+
     fn set_from_parse(&mut self, pt: PieceType, modifier: Option<usize>) {
         let count = modifier.unwrap_or(1) as u8;
         match pt {
@@ -312,6 +424,13 @@ impl Hand {
             _ => panic!(),
         }
     }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum CheckState {
+    None,
+    Check,
+    Checkmate,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -342,9 +461,176 @@ impl Position {
         )
     }
 
-    // pub fn is_in_check(&self) -> bool {
-    //     self.get_checkers() != 0
-    // }
+    pub fn is_empty(&self, sq: Square) -> bool {
+        self.board[sq.to_index()].1 == PieceType::None
+    }
+
+    pub fn is_enemy(&self, sq: Square) -> bool {
+        let place = self.board[sq.to_index()];
+        place.0 != self.stm && place.1 != PieceType::None
+    }
+
+    pub fn is_friendly(&self, sq: Square) -> bool {
+        let place = self.board[sq.to_index()];
+        place.0 == self.stm && place.1 != PieceType::None
+    }
+
+    pub fn is_in_check(&self) -> bool {
+        let king_sq = self.king_sq(self.stm);
+        (0..81)
+            .map(|i| Square(i))
+            .filter(|&sq| self.is_enemy(sq))
+            .any(|sq| self.piece_has_ray_to(sq, king_sq))
+    }
+
+    pub fn get_check_state(&self) -> CheckState {
+        if !self.is_in_check() {
+            CheckState::None
+        } else if self.has_legal_move() {
+            CheckState::Check
+        } else {
+            CheckState::Checkmate
+        }
+    }
+
+    // 二歩
+    fn is_nifu(&self, file: i8) -> bool {
+        let example_pawn = Place(self.stm, PieceType::Pawn);
+        (0..=8)
+            .map(|rank| Square::new(file, rank).unwrap())
+            .any(|sq| self.board[sq.to_index()] == example_pawn)
+    }
+
+    // 行き所のない駒
+    fn is_ikidokorononai(color: Color, pt: PieceType, sq: Square) -> bool {
+        let normalized_sq = sq.normalize_to_sente(color);
+        match pt {
+            PieceType::None => true,
+            PieceType::Pawn | PieceType::Lance => normalized_sq.rank() <= 0,
+            PieceType::Knight => normalized_sq.rank() <= 1,
+            _ => false,
+        }
+    }
+
+    pub fn is_legal(&self, m: Move) -> bool {
+        self.do_move(m).is_some()
+    }
+
+    pub fn do_move(&self, m: Move) -> Option<Position> {
+        let mut new_pos = *self;
+        match m {
+            Move::None => return None,
+            Move::Win => return None,
+            Move::Resign => return None,
+            Move::Drop(ptype, sq) => {
+                if !self.is_empty(sq)
+                    // Invalid piece type to drop
+                    || ptype.promoted() || ptype == PieceType::None || ptype == PieceType::King
+                    // Illegal move rule: 二歩
+                    || (ptype == PieceType::Pawn && self.is_nifu(sq.file()))
+                    // Illegal move rule: 行き所のない駒
+                    || Position::is_ikidokorononai(self.stm, ptype, sq)
+                {
+                    return None;
+                }
+
+                let piece_in_hand: &mut u8 = new_pos.hand[self.stm.to_index()].get_mut(ptype);
+                if *piece_in_hand == 0 {
+                    return None;
+                }
+                *piece_in_hand -= 1;
+
+                new_pos.board[sq.to_index()] = Place(new_pos.stm, ptype)
+            }
+            Move::Normal { from, to, promo } => {
+                let is_capture = !self.is_empty(to);
+                let ptype = self.board[from.to_index()].1;
+
+                // Invalid moves
+                if from == to {
+                    return None;
+                }
+                if !self.is_friendly(from) {
+                    return None;
+                }
+                if promo && !from.is_promo_square(self.stm) && !to.is_promo_square(self.stm) {
+                    return None;
+                }
+                if promo && !ptype.promotable() {
+                    return None;
+                }
+                if is_capture && !self.is_enemy(to) {
+                    return None;
+                }
+
+                // Illegal move rule: 行き所のない駒
+                if !promo && Position::is_ikidokorononai(self.stm, ptype, to) {
+                    return None;
+                }
+
+                // Check piece movement
+                if !self.piece_has_ray_to(from, to) {
+                    return None;
+                }
+
+                // Move on board
+                let place = Place(self.stm, if promo { ptype.promote() } else { ptype });
+                if is_capture {
+                    let hand_ptype = self.board[from.to_index()].1.demote();
+                    *new_pos.hand[self.stm.to_index()].get_mut(hand_ptype) += 1;
+                }
+                new_pos.board[to.to_index()] = place;
+                new_pos.board[from.to_index()] = Place::default();
+            }
+        }
+
+        // Check if we left ourselves in check
+        if new_pos.is_in_check() {
+            return None;
+        }
+
+        new_pos.stm = !new_pos.stm;
+        new_pos.ply += 1;
+
+        // Illegal move rule: 打ち歩詰め
+        if let Move::Drop(PieceType::Pawn, _) = m
+            && new_pos.get_check_state() == CheckState::Checkmate
+        {
+            return None;
+        }
+
+        Some(new_pos)
+    }
+
+    pub fn piece_has_ray_to(&self, from: Square, to: Square) -> bool {
+        let place = self.board[from.to_index()];
+        let delta = to - from;
+        let delta_valid = delta.could_be_piece_move(place.0, place.1);
+        match place.1 {
+            PieceType::None => false,
+            PieceType::Knight => delta_valid,
+            _ => delta_valid && self.is_clear_between(from, to),
+        }
+    }
+
+    fn is_clear_between(&self, a: Square, b: Square) -> bool {
+        let delta = b - a;
+        assert!(a != b);
+        assert!(delta.file == 0 || delta.rank == 0 || delta.file.abs() == delta.rank.abs());
+        let step = delta.signum();
+        let mut current = (a + step).unwrap();
+        while current != b {
+            if !self.is_empty(current) {
+                return false;
+            }
+            current = (current + step).unwrap();
+        }
+        true
+    }
+
+    pub fn has_legal_move(&self) -> bool {
+        ALL_MOVES.iter().any(|&m| self.is_legal(m))
+    }
 
     pub fn parse(s: &str) -> Option<Position> {
         let mut it = s.split(' ');
@@ -376,7 +662,7 @@ impl Position {
         let mut i: usize = 0;
 
         while place_index < 81 && i < board_str.len() {
-            let sq = Square::from_fen_ordering(place_index);
+            let sq = Square::from_fen_ordering(place_index).unwrap();
             let ch = board_str[i];
             match ch {
                 b'/' => {
