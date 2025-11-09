@@ -92,10 +92,10 @@ impl Square {
     }
 
     pub fn normalize_to_sente(self, current_color: Color) -> Square {
-        Square(match current_color {
-            Color::Sente => self.0,
-            Color::Gote => 80 - self.0,
-        })
+        match current_color {
+            Color::Sente => self,
+            Color::Gote => Square::new(self.file(), 8 - self.rank()).unwrap(),
+        }
     }
 
     pub fn is_promo_square(self, color: Color) -> bool {
@@ -118,7 +118,7 @@ impl ops::Add<Delta> for Square {
     type Output = Option<Square>;
 
     fn add(self, other: Delta) -> Self::Output {
-        Square::new(self.file() - other.file, self.rank() - other.rank)
+        Square::new(self.file() + other.file, self.rank() + other.rank)
     }
 }
 
@@ -148,7 +148,7 @@ impl Delta {
         match piece_color {
             Color::Sente => self,
             Color::Gote => Delta {
-                file: -self.file,
+                file: self.file,
                 rank: -self.rank,
             },
         }
@@ -162,7 +162,7 @@ impl Delta {
     }
 
     pub fn is_ring(self) -> bool {
-        self.file != 0 && self.rank != 0 && self.file.abs() <= 1 && self.rank.abs() <= 1
+        (self.file != 0 || self.rank != 0) && self.file.abs() <= 1 && self.rank.abs() <= 1
     }
 
     pub fn could_be_piece_move(self, color: Color, pt: PieceType) -> bool {
@@ -178,15 +178,15 @@ impl Delta {
             PieceType::Dragon => is_ring || d.rank == 0 || d.file == 0,
             PieceType::Bishop => d.rank.abs() == d.file.abs(),
             PieceType::Horse => is_ring || d.rank.abs() == d.file.abs(),
-            PieceType::Knight => d.rank == 2 && d.file.abs() == 1,
-            PieceType::Lance => d.file == 0 && d.rank > 0,
-            PieceType::Pawn => d.file == 0 && d.rank == 1,
-            PieceType::Silver => is_ring && (d.rank == 1 || d.rank.abs() == d.file.abs()),
+            PieceType::Knight => d.rank == -2 && d.file.abs() == 1,
+            PieceType::Lance => d.file == 0 && d.rank < 0,
+            PieceType::Pawn => d.file == 0 && d.rank == -1,
+            PieceType::Silver => is_ring && (d.rank == -1 || d.rank.abs() == d.file.abs()),
             PieceType::Gold
             | PieceType::Tokin
             | PieceType::NariLance
             | PieceType::NariSilver
-            | PieceType::NariKnight => is_ring && (d.rank == 1 || d.rank == 0 || d.file == 0),
+            | PieceType::NariKnight => is_ring && (d.rank == -1 || d.rank == 0 || d.file == 0),
         }
     }
 }
@@ -338,6 +338,20 @@ impl Move {
     }
 }
 
+impl fmt::Display for Move {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Move::None => write!(f, "null"),
+            Move::Win => write!(f, "win"),
+            Move::Resign => write!(f, "resign"),
+            Move::Normal { from, to, promo } => {
+                write!(f, "{from}{to}{}", if *promo { "+" } else { "" })
+            }
+            Move::Drop(pt, sq) => write!(f, "{pt}*{sq}"),
+        }
+    }
+}
+
 lazy_static! {
     static ref ALL_MOVES: Vec<Move> = {
         let sq: Vec<Square> = (0..81).map(|i| Square(i)).collect();
@@ -367,9 +381,21 @@ lazy_static! {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Place(Color, PieceType);
 
+impl Place {
+    fn is_empty(self) -> bool {
+        self.1 == PieceType::None
+    }
+}
+
 impl Default for Place {
     fn default() -> Self {
         Place(Color::Sente, PieceType::None)
+    }
+}
+
+impl fmt::Display for Place {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.1.to_str(self.0),)
     }
 }
 
@@ -576,7 +602,7 @@ impl Position {
                 // Move on board
                 let place = Place(self.stm, if promo { ptype.promote() } else { ptype });
                 if is_capture {
-                    let hand_ptype = self.board[from.to_index()].1.demote();
+                    let hand_ptype = self.board[to.to_index()].1.demote();
                     *new_pos.hand[self.stm.to_index()].get_mut(hand_ptype) += 1;
                 }
                 new_pos.board[to.to_index()] = place;
@@ -630,6 +656,14 @@ impl Position {
 
     pub fn has_legal_move(&self) -> bool {
         ALL_MOVES.iter().any(|&m| self.is_legal(m))
+    }
+
+    pub fn legal_moves(&self) -> Vec<Move> {
+        ALL_MOVES
+            .iter()
+            .filter(|&&m| self.is_legal(m))
+            .map(|&m| m)
+            .collect()
     }
 
     pub fn parse(s: &str) -> Option<Position> {
@@ -773,6 +807,104 @@ impl Position {
 
         Some(hand)
     }
+
+    fn perft(&self, depth: usize, print: bool) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+
+        let moves = self.legal_moves();
+        if depth == 1 && !print {
+            return moves.len() as u64;
+        }
+
+        moves
+            .iter()
+            .map(|&m| {
+                let child_position = self.do_move(m).unwrap();
+                let child = child_position.perft(depth - 1, false);
+                if print {
+                    println!("{m}\t{child}");
+                }
+                child
+            })
+            .sum()
+    }
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Board
+        {
+            let mut blanks = 0;
+            for i in 0..81 {
+                let sq = Square::from_fen_ordering(i).unwrap();
+                let place = self.board[sq.to_index()];
+                if place.is_empty() {
+                    blanks += 1;
+                } else {
+                    if blanks != 0 {
+                        write!(f, "{blanks}")?;
+                        blanks = 0;
+                    }
+                    write!(f, "{place}")?;
+                }
+                if sq.file() == 0 {
+                    if blanks != 0 {
+                        write!(f, "{blanks}")?;
+                        blanks = 0;
+                    }
+                    if i != 80 {
+                        write!(f, "/")?;
+                    }
+                }
+            }
+        }
+
+        // Side to move
+        write!(f, " {} ", self.stm)?;
+
+        // Hand
+        {
+            let mut wrote_hand = false;
+            let mut op = |count, ch| {
+                if count != 0 {
+                    wrote_hand = true;
+                    if count == 1 {
+                        write!(f, "{ch}")
+                    } else {
+                        write!(f, "{count}{ch}")
+                    }
+                } else {
+                    Ok(())
+                }
+            };
+
+            op(self.hand[0].rook, 'R')?;
+            op(self.hand[0].bishop, 'B')?;
+            op(self.hand[0].gold, 'G')?;
+            op(self.hand[0].silver, 'S')?;
+            op(self.hand[0].knight, 'N')?;
+            op(self.hand[0].lance, 'L')?;
+            op(self.hand[0].pawn, 'P')?;
+            op(self.hand[1].rook, 'r')?;
+            op(self.hand[1].bishop, 'b')?;
+            op(self.hand[1].gold, 'g')?;
+            op(self.hand[1].silver, 's')?;
+            op(self.hand[1].knight, 'n')?;
+            op(self.hand[1].lance, 'l')?;
+            op(self.hand[1].pawn, 'p')?;
+
+            if !wrote_hand {
+                write!(f, "-")?;
+            }
+        }
+
+        // Ply
+        write!(f, " {}", self.ply)?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -792,7 +924,93 @@ mod tests {
     }
 
     #[test]
-    fn print_default_board() {
-        eprintln!("{:?}", Position::default())
+    fn roundtrip_fens() {
+        let cases = vec![
+            "lnsgkgsn1/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL w - 1",
+            "lnsgk2nl/1r4gs1/p1pppp1pp/1p4p2/7P1/2P6/PP1PPPP1P/1SG4R1/LN2KGSNL b Bb 1",
+            "ln1g5/1r2S1k2/p2pppn2/2ps2p2/1p7/2P6/PPSPPPPLP/2G2K1pr/LN4G1b w BGSLPnp 62",
+            "8l/1l+R2P3/p2pBG1pp/kps1p4/Nn1P2G2/P1P1P2PP/1PS6/1KSG3+r1/LN2+p3L w Sbgn3p 124",
+            "ln1g3nl/2s2k1+P1/p3pg3/1np2p2p/3p5/1SP3P1P/P1KPPSp2/2G6/L2b1G2L w RBSN2Pr2p 66",
+        ];
+        for case in cases {
+            let position = Position::parse(case).unwrap();
+            let sfen = format!("{position}");
+            assert_eq!(case, sfen);
+        }
+    }
+
+    #[test]
+    fn uchifuzume() {
+        let cases = vec![
+            ("9/9/7gp/7pk/9/7G1/9/PPPPPPPP1/K8 b P 1", true, "P*1e"),
+            ("9/9/7pp/7sk/9/7G1/9/PPPPPPPP1/K8 b P 1", false, "P*1e"),
+            ("9/9/8p/6K1k/9/7G1/9/PPPPPPPP1/9 b P 1", true, "P*1e"),
+            ("9/9/8p/6K1k/9/9/9/PPPPPPPP1/9 b P 1", false, "P*1e"),
+            ("9/9/7gp/1R5gk/9/7G1/9/PPPPPPPP1/K8 b P 1", true, "P*1e"),
+            ("9/9/7gp/7gk/9/7G1/9/PPPPPPPP1/K8 b P 1", false, "P*1e"),
+        ];
+        for (sfen, is_uchifuzume, mstr) in cases {
+            let position = Position::parse(sfen).unwrap();
+            let m = Move::parse(mstr).unwrap();
+            assert_eq!(is_uchifuzume, !position.is_legal(m));
+        }
+    }
+
+    #[test]
+    fn remember_to_promote() {
+        let sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1";
+        let position = Position::parse(sfen).unwrap();
+        let position = position.do_move(Move::parse("7g7f").unwrap()).unwrap();
+        let position = position.do_move(Move::parse("5a4b").unwrap()).unwrap();
+        let position = position.do_move(Move::parse("8h3c+").unwrap()).unwrap();
+        assert_eq!(false, position.is_legal(Move::parse("4b3b").unwrap()));
+    }
+
+    #[test]
+    fn captures_add_pieces_to_hand() {
+        let sfen = "8l/1l+R2P3/p2pBG1pp/kps1p4/Nn1P2G2/P1P1P2PP/1PS6/1KSG3+r1/LN2+p3L w Sbgn3p 124";
+        let position = Position::parse(sfen).unwrap();
+        let position = position.do_move(Move::parse("2h1i").unwrap()).unwrap();
+        assert_eq!(22380, position.perft(2, false));
+    }
+
+    fn test_perft(sfen: &str, numbers: Vec<u64>) {
+        let position = Position::parse(sfen).unwrap();
+        for (depth, number) in numbers.iter().enumerate() {
+            println!("Testing perft on {sfen} depth={depth} number={number}");
+            assert_eq!(*number, position.perft(depth, false));
+        }
+    }
+
+    #[test]
+    fn test_perft_startpos() {
+        test_perft(
+            "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+            vec![1, 30, 900, 25470, 719731],
+        );
+    }
+
+    #[test]
+    fn test_perft_matsuri() {
+        test_perft(
+            "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1",
+            vec![1, 207, 28684, 4809015],
+        );
+    }
+
+    #[test]
+    fn test_perft_pos1() {
+        test_perft(
+            "8l/1l+R2P3/p2pBG1pp/kps1p4/Nn1P2G2/P1P1P2PP/1PS6/1KSG3+r1/LN2+p3L w Sbgn3p 124",
+            vec![1, 178, 18041, 2552846],
+        );
+    }
+
+    #[test]
+    fn test_perft_alldrops() {
+        test_perft(
+            "9/9/9/3k5/9/5K3/9/9/9 b RB2G2S2N2L9Prb2g2s2n2l9p 1",
+            vec![1, 524, 248257], // 112911856
+        );
     }
 }
