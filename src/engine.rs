@@ -1,4 +1,5 @@
 use crate::shogi;
+use log::{error, trace};
 use std::{
     env,
     io::{BufRead, BufReader, Result, Write},
@@ -73,7 +74,7 @@ impl Engine {
     }
 
     pub fn write_line(&mut self, line: &str) -> Result<()> {
-        println!("{} < {line}", self.name());
+        trace!("{} < {line}", self.name());
         writeln!(self.stdin, "{line}")
     }
 
@@ -106,9 +107,15 @@ impl Engine {
         loop {
             // TODO: Timeout
             let line = self.read_line()?;
-            if line.trim().starts_with("bestmove ") {
-                let mstr = line.trim().split(' ').nth(1).unwrap_or("");
-                dbg!(&mstr);
+            if line.trim().starts_with("bestmove") {
+                let Some(mstr) = line.trim().split(' ').nth(1) else {
+                    error!(
+                        "{} (cmd={}) printed bestmove reply without move",
+                        self.name(),
+                        self.builder.path
+                    );
+                    return Ok(None);
+                };
                 return Ok(shogi::Move::parse(mstr));
             }
         }
@@ -122,13 +129,13 @@ impl Engine {
         let mut input = String::new();
         let count = self.stdout.read_line(&mut input)?;
         if count == 0 {
-            println!("{} disconnected", self.name());
+            error!("{} (cmd={}) disconnected", self.name(), self.builder.path);
             Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "Read 0 bytes",
             ))
         } else {
-            println!("{} > {}", self.name(), input.trim());
+            trace!("{} > {}", self.name(), input.trim());
             Ok(input)
         }
     }
