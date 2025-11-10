@@ -1,3 +1,4 @@
+use crate::shogi;
 use std::{
     env,
     io::{BufRead, BufReader, Result, Write},
@@ -53,6 +54,7 @@ impl EngineBuilder {
     }
 }
 
+#[derive(Debug)]
 pub struct Engine {
     child: Child,
     stdout: BufReader<ChildStdout>,
@@ -71,7 +73,45 @@ impl Engine {
     }
 
     pub fn write_line(&mut self, line: &str) -> Result<()> {
+        println!("{} < {line}", self.name());
         writeln!(self.stdin, "{line}")
+    }
+
+    pub fn isready(&mut self) -> Result<()> {
+        self.write_line("isready")?;
+        self.flush()?;
+        loop {
+            // TODO: Timeout
+            let line = self.read_line()?;
+            if line.trim().eq_ignore_ascii_case("readyok") {
+                return Ok(());
+            }
+        }
+    }
+
+    pub fn usinewgame(&mut self) -> Result<()> {
+        self.write_line("usinewgame")?;
+        self.flush()?;
+        Ok(())
+    }
+
+    pub fn position(&mut self, game: &shogi::Game) -> Result<()> {
+        let position = format!("position {}", game.usi_string());
+        self.write_line(&position)?;
+        self.flush()?;
+        Ok(())
+    }
+
+    pub fn wait_for_bestmove(&mut self) -> Result<Option<shogi::Move>> {
+        loop {
+            // TODO: Timeout
+            let line = self.read_line()?;
+            if line.trim().starts_with("bestmove ") {
+                let mstr = line.trim().split(' ').nth(1).unwrap_or("");
+                dbg!(&mstr);
+                return Ok(shogi::Move::parse(mstr));
+            }
+        }
     }
 
     pub fn flush(&mut self) -> Result<()> {
@@ -82,11 +122,13 @@ impl Engine {
         let mut input = String::new();
         let count = self.stdout.read_line(&mut input)?;
         if count == 0 {
+            println!("{} disconnected", self.name());
             Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "Read 0 bytes",
             ))
         } else {
+            println!("{} > {}", self.name(), input.trim());
             Ok(input)
         }
     }

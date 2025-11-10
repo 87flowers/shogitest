@@ -1,4 +1,5 @@
 use itertools::iproduct;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use std::fmt;
 use std::ops;
@@ -961,6 +962,19 @@ impl Game {
             history: vec![startpos],
             last_not_in_check_ply: [-1, -1],
         }
+    }
+
+    pub fn stm(&self) -> Color {
+        self.current_position.stm
+    }
+
+    pub fn usi_string(&self) -> String {
+        let mut string = format!("sfen {}", self.history[0]);
+        if !self.moves.is_empty() {
+            string += " moves";
+            string.extend(self.moves.iter().map(|m| format!(" {m}")));
+        }
+        string
     }
 
     pub fn do_move(&mut self, m: Move) -> GameOutcome {
