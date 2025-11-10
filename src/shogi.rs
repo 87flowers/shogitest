@@ -1019,6 +1019,8 @@ impl Game {
             GameOutcome::Undetermined
         } else if self.last_not_in_check_ply[stm.to_index()] < first_clone {
             GameOutcome::LossByPerpetual(!stm)
+        } else if self.last_not_in_check_ply[(!stm).to_index()] < first_clone {
+            GameOutcome::LossByPerpetual(stm)
         } else {
             GameOutcome::DrawBySennichite
         }
@@ -1198,6 +1200,12 @@ mod tests {
                 "G*8i R*7h 8i8h 7h8h G*8i G*7h 8i8h 7h8h G*8i G*7h 8i8h 7h8h G*8i G*7h 8i8h 7h8h G*8i G*7h",
                 "8i8h",
                 GameOutcome::DrawBySennichite,
+            ),
+            (
+                "lnsG3Rl/1rg1ks3/p1ppppp1p/9/9/1p7/PPPPPPP1P/1B7/LNSGKGSNL b BNPp 1",
+                "6a5a 5b6b 5a6a 6b5b 6a5a 5b6b 5a6a 6b5b 6a5a 5b6b 5a6a",
+                "6b5b",
+                GameOutcome::LossByPerpetual(Color::Sente),
             ),
         ];
         for (sfen, moves, last_move, expected_outcome) in cases {
