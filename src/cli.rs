@@ -19,7 +19,7 @@ impl Default for CliOptions {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct EngineOptions {
     pub builder: engine::EngineBuilder,
     pub time_control: String,

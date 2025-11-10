@@ -1,11 +1,11 @@
 #![feature(str_split_whitespace_remainder)]
 
-use crate::shogi::GameOutcome;
 use flexi_logger;
 use log::info;
 
 mod cli;
 mod engine;
+mod runner;
 mod shogi;
 
 fn main() -> std::io::Result<()> {
@@ -19,41 +19,36 @@ fn main() -> std::io::Result<()> {
         return Ok(());
     }
 
-    let mut engine0 = cli_options.engines[0].builder.init()?;
-    let mut engine1 = cli_options.engines[1].builder.init()?;
+    let r = runner::Runner::new(cli_options.engines, cli_options.concurrency);
 
-    engine0.isready()?;
-    engine1.isready()?;
+    let mut match_index = 0;
+    let mut completed_matches = 0;
 
-    engine0.usinewgame()?;
-    engine1.usinewgame()?;
+    r.run(
+        || {
+            let id = match_index;
+            let i = match_index % 2;
+            let j = 1 - i;
 
-    let mut game = shogi::Game::new(shogi::Position::default());
-    loop {
-        let stm = game.stm();
+            match_index += 1;
 
-        let current_engine = match stm {
-            shogi::Color::Sente => &mut engine0,
-            shogi::Color::Gote => &mut engine1,
-        };
-
-        current_engine.position(&game)?;
-
-        current_engine.write_line("go movetime 100")?;
-        current_engine.flush()?;
-
-        let m = current_engine.wait_for_bestmove()?;
-
-        let outcome = match m {
-            None => GameOutcome::LossByIllegal(stm),
-            Some(m) => game.do_move(m),
-        };
-
-        if outcome.is_determined() {
-            dbg!(&outcome);
-            break;
-        }
-    }
+            if id < 10 {
+                dbg!(&id);
+                Some(runner::MatchTicket {
+                    id,
+                    engines: [i, j],
+                })
+            } else {
+                None
+            }
+        },
+        |res| {
+            dbg!(res);
+            completed_matches += 1;
+            dbg!(&completed_matches);
+            completed_matches < 10
+        },
+    );
 
     Ok(())
 }
