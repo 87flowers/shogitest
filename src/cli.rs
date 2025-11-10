@@ -1,11 +1,22 @@
 use crate::engine;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CliOptions {
     pub engines: Vec<EngineOptions>,
-    pub openings_file: String,
-    pub rounds: u64,
+    pub openings_file: Option<String>,
+    pub rounds: Option<u64>,
     pub concurrency: u64,
+}
+
+impl Default for CliOptions {
+    fn default() -> Self {
+        CliOptions {
+            engines: vec![],
+            openings_file: None,
+            rounds: None,
+            concurrency: 1,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -62,7 +73,7 @@ pub fn parse() -> CliOptions {
 
                     match name {
                         "file" => {
-                            options.openings_file = String::from(value);
+                            options.openings_file = Some(String::from(value));
                         }
                         _ => {
                             dbg!(&name);
@@ -84,7 +95,7 @@ pub fn parse() -> CliOptions {
             "-rounds" => {
                 let Some(option) = it.next() else { break };
                 if let Ok(option) = option.parse::<u64>() {
-                    options.rounds = option;
+                    options.rounds = Some(option);
                 } else {
                     eprint!("invalid rounds value {option}");
                 }
