@@ -46,7 +46,6 @@ fn main() -> std::io::Result<()> {
             dbg!(res);
             completed_matches += 1;
             dbg!(&completed_matches);
-            completed_matches < 10
         },
     );
 

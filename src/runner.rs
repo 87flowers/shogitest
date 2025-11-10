@@ -31,7 +31,7 @@ impl Runner {
     pub fn run<Next, Consume>(&self, mut next: Next, mut consume: Consume)
     where
         Next: FnMut() -> Option<MatchTicket>,
-        Consume: FnMut(MatchResult) -> bool,
+        Consume: FnMut(MatchResult) -> (),
     {
         let (send_ticket, recv_ticket) = crossbeam_channel::bounded(0);
         let (send_result, recv_result) = crossbeam_channel::bounded(0);
@@ -47,24 +47,20 @@ impl Runner {
             }));
         }
 
-        let mut ok = true;
         let mut ticket = next();
-        while ok {
-            if ticket.is_none() {
-                ok = consume(recv_result.recv().unwrap());
-            } else {
-                crossbeam_channel::select! {
-                    recv(recv_result) -> result => ok = consume(result.unwrap()),
-                    send(send_ticket, ticket) -> result => {
-                        assert!(result.is_ok());
+        let mut none_tickets_sent = 0;
+        while none_tickets_sent < self.concurrency {
+            crossbeam_channel::select! {
+                recv(recv_result) -> result => consume(result.unwrap()),
+                send(send_ticket, ticket.clone()) -> result => {
+                    assert!(result.is_ok());
+                    if ticket.is_none() {
+                        none_tickets_sent += 1;
+                    } else {
                         ticket = next();
                     }
                 }
             }
-        }
-
-        for i in 0..self.concurrency {
-            send_ticket.send(None).unwrap();
         }
 
         while let Some(h) = thread_handles.pop() {
@@ -113,7 +109,7 @@ fn run_match(
 
         current_engine.position(&game)?;
 
-        current_engine.write_line("go movetime 100")?;
+        current_engine.write_line("go movetime 10")?;
         current_engine.flush()?;
 
         let m = current_engine.wait_for_bestmove()?;
