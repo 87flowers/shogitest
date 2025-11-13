@@ -91,7 +91,7 @@ fn runner_thread_main(
 }
 
 fn run_match(
-    engines: &mut Vec<engine::Engine>,
+    engines: &mut [engine::Engine],
     ticket: &MatchTicket,
 ) -> Result<shogi::GameOutcome, std::io::Error> {
     for i in 0..2 {
