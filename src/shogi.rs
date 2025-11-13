@@ -1,5 +1,4 @@
 use itertools::iproduct;
-use itertools::Itertools;
 use lazy_static::lazy_static;
 use std::fmt;
 use std::ops;

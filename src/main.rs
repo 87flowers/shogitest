@@ -7,6 +7,42 @@ mod cli;
 mod engine;
 mod runner;
 mod shogi;
+mod tournament;
+
+struct TestTournament {
+    match_index: usize,
+    completed_matches: usize,
+}
+
+impl tournament::Tournament for TestTournament {
+    fn next(&mut self) -> Option<tournament::MatchTicket> {
+        let id = self.match_index;
+        let i = self.match_index % 2;
+        let j = 1 - i;
+
+        self.match_index += 1;
+
+        if id < 10 {
+            dbg!(&id);
+            Some(tournament::MatchTicket {
+                id,
+                engines: [i, j],
+            })
+        } else {
+            None
+        }
+    }
+    fn match_complete(&mut self, result: tournament::MatchResult) -> tournament::TournamentState {
+        dbg!(result);
+        self.completed_matches += 1;
+        dbg!(&self.completed_matches);
+        if self.completed_matches < 10 {
+            tournament::TournamentState::Continue
+        } else {
+            tournament::TournamentState::Stop
+        }
+    }
+}
 
 fn main() -> std::io::Result<()> {
     flexi_logger::init();
@@ -19,35 +55,12 @@ fn main() -> std::io::Result<()> {
         return Ok(());
     }
 
+    let mut tournament = TestTournament {
+        match_index: 0,
+        completed_matches: 0,
+    };
     let r = runner::Runner::new(cli_options.engines, cli_options.concurrency);
-
-    let mut match_index = 0;
-    let mut completed_matches = 0;
-
-    r.run(
-        || {
-            let id = match_index;
-            let i = match_index % 2;
-            let j = 1 - i;
-
-            match_index += 1;
-
-            if id < 10 {
-                dbg!(&id);
-                Some(runner::MatchTicket {
-                    id,
-                    engines: [i, j],
-                })
-            } else {
-                None
-            }
-        },
-        |res| {
-            dbg!(res);
-            completed_matches += 1;
-            dbg!(&completed_matches);
-        },
-    );
+    r.run(&mut tournament);
 
     Ok(())
 }

@@ -1,18 +1,8 @@
+use crate::tournament::{MatchResult, MatchTicket, Tournament, TournamentState};
 use crate::{cli, engine, shogi};
 use crossbeam_channel;
+use log::info;
 use std::thread;
-
-#[derive(Debug, Clone)]
-pub struct MatchTicket {
-    pub id: usize,
-    pub engines: [usize; 2],
-}
-
-#[derive(Debug, Clone)]
-pub struct MatchResult {
-    pub ticket: MatchTicket,
-    pub outcome: shogi::GameOutcome,
-}
 
 #[derive(Debug)]
 pub struct Runner {
@@ -28,10 +18,9 @@ impl Runner {
         }
     }
 
-    pub fn run<Next, Consume>(&self, mut next: Next, mut consume: Consume)
+    pub fn run<T>(&self, tournament: &mut T)
     where
-        Next: FnMut() -> Option<MatchTicket>,
-        Consume: FnMut(MatchResult) -> (),
+        T: Tournament,
     {
         let (send_ticket, recv_ticket) = crossbeam_channel::bounded(0);
         let (send_result, recv_result) = crossbeam_channel::bounded(0);
@@ -47,20 +36,29 @@ impl Runner {
             }));
         }
 
-        let mut ticket = next();
-        let mut none_tickets_sent = 0;
-        while none_tickets_sent < self.concurrency {
-            crossbeam_channel::select! {
-                recv(recv_result) -> result => consume(result.unwrap()),
-                send(send_ticket, ticket.clone()) -> result => {
-                    assert!(result.is_ok());
-                    if ticket.is_none() {
-                        none_tickets_sent += 1;
-                    } else {
-                        ticket = next();
+        let mut state = TournamentState::Continue;
+        let mut ticket = None;
+        while state != TournamentState::Stop {
+            if ticket.is_none() {
+                ticket = tournament.next();
+            }
+            if ticket.is_none() {
+                crossbeam_channel::select! {
+                    recv(recv_result) -> result => state = tournament.match_complete(result.unwrap()),
+                }
+            } else {
+                crossbeam_channel::select! {
+                    recv(recv_result) -> result => state = tournament.match_complete(result.unwrap()),
+                    send(send_ticket, ticket.clone()) -> result => {
+                        assert!(result.is_ok());
+                        ticket = None;
                     }
                 }
             }
+        }
+
+        for i in 0..self.concurrency {
+            send_ticket.send(None).unwrap();
         }
 
         while let Some(h) = thread_handles.pop() {
@@ -80,15 +78,15 @@ fn runner_thread_main(
         .map(|o| o.builder.init().unwrap())
         .collect();
 
-    loop {
-        match recv.recv().unwrap() {
-            None => break,
-            Some(ticket) => {
-                assert!(ticket.engines[0] != ticket.engines[1]);
-                let outcome = run_match(&mut engines, &ticket).unwrap();
-                send.send(MatchResult { ticket, outcome }).unwrap();
-            }
-        }
+    while let Some(ticket) = recv.recv().unwrap() {
+        assert!(ticket.engines[0] != ticket.engines[1]);
+        info!("Thread {thread_index} received ticket: {:?}", &ticket);
+
+        let outcome = run_match(&mut engines, &ticket).unwrap();
+
+        let result = MatchResult { ticket, outcome };
+        info!("Thread {thread_index} sending result: {:?}", &result);
+        send.send(result).unwrap();
     }
 }
 
