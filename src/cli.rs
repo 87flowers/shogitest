@@ -1,4 +1,5 @@
 use crate::engine;
+use crate::tc;
 
 #[derive(Debug, Clone)]
 pub struct MetaDataOptions {
@@ -46,7 +47,7 @@ impl Default for CliOptions {
 #[derive(Debug, Default, Clone)]
 pub struct EngineOptions {
     pub builder: engine::EngineBuilder,
-    pub time_control: String,
+    pub time_control: tc::TimeControl,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -95,7 +96,11 @@ pub fn parse() -> Option<CliOptions> {
                             engine.builder.cmd = String::from(value);
                         }
                         "tc" => {
-                            engine.time_control = String::from(value);
+                            if let Some(tc) = tc::TimeControl::parse(&value) {
+                                engine.time_control = tc;
+                            } else {
+                                eprint!("Invalid time control specification {value}");
+                            }
                         }
                         _ => {
                             dbg!(&name);

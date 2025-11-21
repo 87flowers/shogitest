@@ -1,9 +1,12 @@
+use crate::shogi::{Color, GameOutcome};
+use crate::tc::StepResult;
 use crate::tournament::{MatchResult, MatchTicket, Tournament, TournamentState};
-use crate::{cli, engine, shogi};
+use crate::{cli, engine, shogi, tc};
 use chrono::Utc;
 use crossbeam_channel;
 use log::info;
 use std::thread;
+use std::time::Instant;
 
 #[derive(Debug)]
 pub struct Runner {
@@ -82,7 +85,7 @@ fn runner_thread_main(
         assert!(ticket.engines[0] != ticket.engines[1]);
         info!("Thread {thread_index} received ticket: {:?}", &ticket);
 
-        let result = run_match(&mut engines, &ticket).unwrap();
+        let result = run_match(&engine_options, &mut engines, &ticket).unwrap();
 
         info!("Thread {thread_index} sending result: {:?}", &result);
         send.send(result).unwrap();
@@ -90,6 +93,7 @@ fn runner_thread_main(
 }
 
 fn run_match(
+    engine_options: &[cli::EngineOptions],
     engines: &mut [engine::Engine],
     ticket: &MatchTicket,
 ) -> Result<MatchResult, std::io::Error> {
@@ -99,6 +103,11 @@ fn run_match(
         outcome: shogi::GameOutcome::Undetermined,
         moves: vec![],
     };
+
+    let mut engine_time = [
+        tc::EngineTime::new(engine_options[ticket.engines[0]].time_control),
+        tc::EngineTime::new(engine_options[ticket.engines[1]].time_control),
+    ];
 
     for i in 0..2 {
         engines[ticket.engines[i]].isready()?;
@@ -111,15 +120,28 @@ fn run_match(
 
         let current_engine = &mut engines[ticket.engines[stm.to_index()]];
 
+        let now = Instant::now();
         current_engine.position(&game)?;
 
-        current_engine.write_line("go movetime 10")?;
+        current_engine.write_line(&format!(
+            "go {} {}",
+            engine_time[0].to_usi_string(Color::Sente),
+            engine_time[1].to_usi_string(Color::Gote),
+        ))?;
         current_engine.flush()?;
 
         let move_record = current_engine.wait_for_bestmove()?;
+
+        let duration = Instant::now() - now;
+        let time_outcome = engine_time[stm.to_index()].step(duration);
+
         let m = move_record.m;
         match_result.moves.push(move_record);
         match_result.outcome = game.do_move(m);
+
+        if time_outcome == StepResult::TimeElapsed {
+            match_result.outcome = GameOutcome::LossByClock(stm);
+        }
 
         if match_result.outcome.is_determined() {
             return Ok(match_result);

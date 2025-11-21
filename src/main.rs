@@ -8,6 +8,7 @@ mod engine;
 mod pgn;
 mod runner;
 mod shogi;
+mod tc;
 mod tournament;
 
 fn main() -> std::io::Result<()> {
