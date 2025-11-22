@@ -124,9 +124,8 @@ fn run_match(
         current_engine.position(&game)?;
 
         current_engine.write_line(&format!(
-            "go {} {}",
-            engine_time[0].to_usi_string(Color::Sente),
-            engine_time[1].to_usi_string(Color::Gote),
+            "go {}",
+            tc::to_usi_string(stm, &engine_time[0], &engine_time[1])
         ))?;
         current_engine.flush()?;
 
