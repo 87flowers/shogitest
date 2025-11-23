@@ -1,4 +1,4 @@
-use crate::{book, cli, pgn, tournament};
+use crate::{book, cli, tournament};
 
 fn pairings_count(players: usize) -> u64 {
     (players * (players - 1) / 2) as u64
