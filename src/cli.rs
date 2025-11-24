@@ -47,7 +47,7 @@ impl Default for AdjudicationOptions {
 pub struct DrawAdjudicationOptions {
     pub move_number: usize,
     pub move_count: usize,
-    pub score: u32,
+    pub score: i32,
 }
 
 impl Default for DrawAdjudicationOptions {
@@ -63,7 +63,7 @@ impl Default for DrawAdjudicationOptions {
 #[derive(Debug, Clone)]
 pub struct ResignAdjudicationOptions {
     pub move_count: usize,
-    pub score: u32,
+    pub score: i32,
     pub two_sided: bool,
 }
 
@@ -457,7 +457,7 @@ pub fn parse() -> Option<CliOptions> {
                         }
                         "movecount" => {
                             draw.move_count = match value.parse::<usize>() {
-                                Ok(value) => value,
+                                Ok(value) if value > 0 => value,
                                 _ => {
                                     eprintln!("Invalid movecount {value} for -draw");
                                     return None;
@@ -465,8 +465,8 @@ pub fn parse() -> Option<CliOptions> {
                             };
                         }
                         "score" => {
-                            draw.score = match value.parse::<u32>() {
-                                Ok(value) => value,
+                            draw.score = match value.parse::<i32>() {
+                                Ok(value) if value >= 0 => value,
                                 _ => {
                                     eprintln!("Invalid score {value} for -draw");
                                     return None;
@@ -493,7 +493,7 @@ pub fn parse() -> Option<CliOptions> {
                     match name {
                         "movecount" => {
                             resign.move_count = match value.parse::<usize>() {
-                                Ok(value) => value,
+                                Ok(value) if value > 0 => value,
                                 _ => {
                                     eprintln!("Invalid movecount {value} for -resign");
                                     return None;
@@ -501,8 +501,8 @@ pub fn parse() -> Option<CliOptions> {
                             };
                         }
                         "score" => {
-                            resign.score = match value.parse::<u32>() {
-                                Ok(value) => value,
+                            resign.score = match value.parse::<i32>() {
+                                Ok(value) if value >= 0 => value,
                                 _ => {
                                     eprintln!("Invalid score {value} for -resign");
                                     return None;

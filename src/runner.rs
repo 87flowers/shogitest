@@ -152,7 +152,7 @@ fn do_adjudication(
             .iter()
             .rev()
             .take_while(|m| match m.score {
-                Score::Cp(cp) => cp.abs() as u32 <= draw.score,
+                Score::Cp(cp) => cp.abs() <= draw.score,
                 _ => false,
             })
             .count()
@@ -170,7 +170,7 @@ fn do_adjudication(
             .filter(|m| m.stm == Some(stm))
             .take_while(|m| match m.score {
                 Score::None => false,
-                Score::Cp(cp) => cp <= -(resign.score as i32),
+                Score::Cp(cp) => cp <= -resign.score,
                 Score::Mate(ply) => ply < 0,
             })
             .count()
@@ -190,7 +190,7 @@ fn do_adjudication(
                 Score::None => false,
                 Score::Cp(cp) => {
                     if Some(stm) == m.stm {
-                        cp <= -(resign.score as i32)
+                        cp <= -resign.score
                     } else {
                         cp >= resign.score as i32
                     }
