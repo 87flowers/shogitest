@@ -1,13 +1,16 @@
-use crate::{cli, pgn, tournament};
+use crate::{
+    cli, pgn,
+    tournament::{MatchResult, MatchTicket, Tournament, TournamentState},
+};
 
 pub struct PgnOutWrapper {
-    inner: Box<dyn tournament::Tournament>,
+    inner: Box<dyn Tournament>,
     pgn: pgn::PgnWriter,
 }
 
 impl PgnOutWrapper {
     pub fn new(
-        inner: Box<dyn tournament::Tournament>,
+        inner: Box<dyn Tournament>,
         options: &cli::PgnOutOptions,
         meta: &cli::MetaDataOptions,
         engine_names: Vec<String>,
@@ -19,13 +22,22 @@ impl PgnOutWrapper {
     }
 }
 
-impl tournament::Tournament for PgnOutWrapper {
-    fn next(&mut self) -> Option<tournament::MatchTicket> {
+impl Tournament for PgnOutWrapper {
+    fn next(&mut self) -> Option<MatchTicket> {
         self.inner.as_mut().next()
     }
-    fn match_complete(&mut self, result: tournament::MatchResult) -> tournament::TournamentState {
+    fn match_started(&mut self, ticket: MatchTicket) {
+        self.inner.as_mut().match_started(ticket);
+    }
+    fn match_complete(&mut self, result: MatchResult) -> TournamentState {
         self.pgn.write(&result).unwrap();
         self.inner.as_mut().match_complete(result)
+    }
+    fn print_interval_report(&self) {
+        self.inner.print_interval_report()
+    }
+    fn tournament_complete(&self) {
+        self.inner.tournament_complete()
     }
     fn expected_maximum_match_count(&self) -> Option<u64> {
         self.inner.as_ref().expected_maximum_match_count()

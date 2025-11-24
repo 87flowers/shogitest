@@ -12,6 +12,7 @@ mod engine;
 mod pgn;
 mod runner;
 mod shogi;
+mod stats;
 mod tc;
 mod tournament;
 mod util;
@@ -56,12 +57,24 @@ fn main() -> std::io::Result<()> {
         )?);
     }
 
+    tournament = Box::new(tournament::StatsWrapper::new(
+        tournament,
+        engine_names.clone(),
+        cli_options.engines.clone(),
+        cli_options.book.map(|b| b.file.clone()),
+    ));
+
     tournament = Box::new(tournament::ReporterWrapper::new(
         tournament,
         engine_names.clone(),
     ));
 
-    let r = runner::Runner::new(cli_options.engines, cli_options.concurrency, cli_options.adjudication);
+    let r = runner::Runner::new(
+        cli_options.engines,
+        cli_options.concurrency,
+        cli_options.adjudication,
+        cli_options.report_interval,
+    );
     r.run(tournament);
 
     Ok(())

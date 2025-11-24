@@ -13,6 +13,7 @@ pub struct Runner {
     engines: Vec<cli::EngineOptions>,
     concurrency: u64,
     adjudication: cli::AdjudicationOptions,
+    report_interval: Option<u64>,
 }
 
 impl Runner {
@@ -20,11 +21,13 @@ impl Runner {
         engines: Vec<cli::EngineOptions>,
         concurrency: u64,
         adjudication: cli::AdjudicationOptions,
+        report_interval: Option<u64>,
     ) -> Runner {
         Runner {
             engines,
             concurrency,
             adjudication,
+            report_interval,
         }
     }
 
@@ -48,20 +51,41 @@ impl Runner {
 
         let mut state = TournamentState::Continue;
         let mut ticket = None;
+        let mut match_count = 0;
+
+        let mut match_complete = |tournament: &mut dyn Tournament, result: MatchResult| {
+            let state = tournament.match_complete(result);
+
+            match_count += 1;
+            if let Some(report_interval) = self.report_interval
+                && match_count % report_interval == 0
+            {
+                println!("--------------------------------------------------------------");
+                tournament.print_interval_report();
+                println!("--------------------------------------------------------------");
+            }
+
+            state
+        };
+
         while state != TournamentState::Stop {
             if ticket.is_none() {
                 ticket = tournament.next();
             }
-            if ticket.is_none() {
-                crossbeam_channel::select! {
-                    recv(recv_result) -> result => state = tournament.match_complete(result.unwrap()),
+            match ticket {
+                None => {
+                    crossbeam_channel::select! {
+                        recv(recv_result) -> result => state = match_complete(tournament, result.unwrap()),
+                    }
                 }
-            } else {
-                crossbeam_channel::select! {
-                    recv(recv_result) -> result => state = tournament.match_complete(result.unwrap()),
-                    send(send_ticket, ticket.clone()) -> result => {
-                        assert!(result.is_ok());
-                        ticket = None;
+                Some(ref t) => {
+                    crossbeam_channel::select! {
+                        recv(recv_result) -> result => state = match_complete(tournament, result.unwrap()),
+                        send(send_ticket, Some(t.clone())) -> result => {
+                            assert!(result.is_ok());
+                            tournament.match_started(t.clone());
+                            ticket = None;
+                        }
                     }
                 }
             }
@@ -74,6 +98,8 @@ impl Runner {
         while let Some(h) = thread_handles.pop() {
             h.join().expect("could not join thread");
         }
+
+        tournament.tournament_complete();
     }
 }
 

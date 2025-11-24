@@ -83,6 +83,12 @@ impl EngineBuilder {
 
         Ok(engine)
     }
+    pub fn get_usi_option_value(&self, key: &str) -> Option<&str> {
+        self.usi_options
+            .iter()
+            .filter_map(|(k, v)| if k == key { Some(v.as_ref()) } else { None })
+            .last()
+    }
 }
 
 #[derive(Debug)]

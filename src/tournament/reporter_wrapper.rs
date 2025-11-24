@@ -1,15 +1,15 @@
-use crate::{shogi, tournament, tournament::Tournament};
+use crate::{
+    shogi,
+    tournament::{MatchResult, MatchTicket, Tournament, TournamentState},
+};
 
 pub struct ReporterWrapper {
-    inner: Box<dyn tournament::Tournament>,
+    inner: Box<dyn Tournament>,
     engine_names: Vec<String>,
 }
 
 impl ReporterWrapper {
-    pub fn new(
-        inner: Box<dyn tournament::Tournament>,
-        engine_names: Vec<String>,
-    ) -> ReporterWrapper {
+    pub fn new(inner: Box<dyn Tournament>, engine_names: Vec<String>) -> ReporterWrapper {
         ReporterWrapper {
             inner: inner,
             engine_names: engine_names,
@@ -21,26 +21,26 @@ impl ReporterWrapper {
     fn format_of_max_string(&self) -> String {
         match self.expected_maximum_match_count() {
             Some(count) => format!(" of {count}"),
-            None => String::from(""),
+            None => String::from(" of infinite"),
         }
     }
 }
 
-impl tournament::Tournament for ReporterWrapper {
-    fn next(&mut self) -> Option<tournament::MatchTicket> {
-        let ticket = self.inner.as_mut().next();
-        if let Some(ticket) = &ticket {
-            println!(
-                "Started game {}{} ({} vs {})",
-                ticket.id + 1,
-                self.format_of_max_string(),
-                &self.engine_names[ticket.engines[0]],
-                &self.engine_names[ticket.engines[1]]
-            );
-        }
-        ticket
+impl Tournament for ReporterWrapper {
+    fn next(&mut self) -> Option<MatchTicket> {
+        self.inner.as_mut().next()
     }
-    fn match_complete(&mut self, result: tournament::MatchResult) -> tournament::TournamentState {
+    fn match_started(&mut self, ticket: MatchTicket) {
+        println!(
+            "Started game {}{} ({} vs {})",
+            ticket.id + 1,
+            self.format_of_max_string(),
+            &self.engine_names[ticket.engines[0]],
+            &self.engine_names[ticket.engines[1]]
+        );
+        self.inner.as_mut().match_started(ticket)
+    }
+    fn match_complete(&mut self, result: MatchResult) -> TournamentState {
         let ticket = &result.ticket;
         println!(
             "Finished game {} ({} vs {}): {} {{{}}}",
@@ -55,6 +55,13 @@ impl tournament::Tournament for ReporterWrapper {
             result.outcome.to_string(),
         );
         self.inner.as_mut().match_complete(result)
+    }
+    fn print_interval_report(&self) {
+        self.inner.print_interval_report()
+    }
+    fn tournament_complete(&self) {
+        println!("Tournament finished");
+        self.inner.tournament_complete()
     }
     fn expected_maximum_match_count(&self) -> Option<u64> {
         self.inner.as_ref().expected_maximum_match_count()

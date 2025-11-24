@@ -50,6 +50,7 @@ pub struct CliOptions {
     pub meta: MetaDataOptions,
     pub pgn: Option<PgnOutOptions>,
     pub adjudication: AdjudicationOptions,
+    pub report_interval: Option<u64>,
 }
 
 impl CliOptions {
@@ -76,6 +77,7 @@ impl Default for CliOptions {
             },
             pgn: None,
             adjudication: AdjudicationOptions::default(),
+            report_interval: Some(10),
         }
     }
 }
@@ -305,9 +307,14 @@ pub fn parse() -> Option<CliOptions> {
                         eprint!("invalid rounds value {option} (must be bigger than zero)");
                         return None;
                     }
-                    if option > 2 && option % 2 == 1 {
+                    if option % 2 != 0 {
                         eprint!("odd value for rounds {option}! expected an even value.");
                         return None;
+                    }
+                    if option > 2 {
+                        eprint!(
+                            "Warning; There is often no good reason for a round to have more than two games. (Current value: {option})"
+                        );
                     }
                     options.rounds = option;
                 } else {
@@ -392,6 +399,20 @@ pub fn parse() -> Option<CliOptions> {
                         return None;
                     }
                 };
+            }
+
+            "-ratinginterval" => {
+                let Some(option) = it.next() else { break };
+                if let Ok(option) = option.parse::<u64>() {
+                    options.report_interval = if option == 0 { None } else { Some(option) };
+                } else {
+                    eprint!("invalid games value {option} (must be unsigned integer)");
+                    return None;
+                }
+            }
+
+            "-testEnv" => {
+                options.report_interval = None;
             }
 
             _ => {
