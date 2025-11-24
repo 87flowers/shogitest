@@ -273,3 +273,266 @@ fn run_match(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shogi::Color;
+
+    fn new_mr() -> MatchResult {
+        MatchResult {
+            ticket: MatchTicket {
+                id: 0,
+                engines: [0, 1],
+                opening: shogi::Position::default(),
+            },
+            game_start: Utc::now(),
+            outcome: GameOutcome::Undetermined,
+            moves: vec![],
+        }
+    }
+
+    fn append(mr: &mut MatchResult, stm: Color, score: Score) {
+        mr.moves.push(engine::MoveRecord {
+            stm: Some(stm),
+            score,
+            ..engine::MoveRecord::default()
+        });
+    }
+
+    #[test]
+    fn test_resign_1() {
+        let mut mr = new_mr();
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1000));
+        append(&mut mr, Color::Gote, Score::Cp(-1000));
+        append(&mut mr, Color::Sente, Score::Cp(1000));
+        append(&mut mr, Color::Gote, Score::Cp(-1000));
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: false,
+                    move_count: 1,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::WinByAdjudication(Color::Sente));
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: false,
+                    move_count: 2,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::WinByAdjudication(Color::Sente));
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: false,
+                    move_count: 3,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::Undetermined);
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: true,
+                    move_count: 2,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::WinByAdjudication(Color::Sente));
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: true,
+                    move_count: 4,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::WinByAdjudication(Color::Sente));
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: true,
+                    move_count: 6,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::Undetermined);
+    }
+
+    #[test]
+    fn test_resign_2() {
+        let mut mr = new_mr();
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(-1000));
+        append(&mut mr, Color::Gote, Score::Cp(-1000));
+        append(&mut mr, Color::Sente, Score::Cp(-1000));
+        append(&mut mr, Color::Gote, Score::Cp(-1000));
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: false,
+                    move_count: 2,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::WinByAdjudication(Color::Sente));
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: true,
+                    move_count: 2,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::Undetermined);
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: true,
+                    move_count: 4,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::Undetermined);
+    }
+
+    #[test]
+    fn test_resign_3() {
+        let mut mr = new_mr();
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(-1000));
+        append(&mut mr, Color::Gote, Score::Mate(6));
+        append(&mut mr, Color::Sente, Score::Cp(-1000));
+        append(&mut mr, Color::Gote, Score::Mate(4));
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: false,
+                    move_count: 2,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::Undetermined);
+    }
+
+    #[test]
+    fn test_resign_4() {
+        let mut mr = new_mr();
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1));
+        append(&mut mr, Color::Gote, Score::Cp(-1));
+        append(&mut mr, Color::Sente, Score::Cp(1000));
+        append(&mut mr, Color::Gote, Score::Mate(-6));
+        append(&mut mr, Color::Sente, Score::Cp(1000));
+        append(&mut mr, Color::Gote, Score::Mate(-4));
+
+        mr.outcome = GameOutcome::Undetermined;
+        do_adjudication(
+            Color::Gote,
+            &cli::AdjudicationOptions {
+                max_moves: None,
+                draw: None,
+                resign: Some(cli::ResignAdjudicationOptions {
+                    two_sided: false,
+                    move_count: 2,
+                    score: 200,
+                }),
+            },
+            &mut mr,
+        );
+        assert!(mr.outcome == GameOutcome::WinByAdjudication(Color::Sente));
+    }
+}
