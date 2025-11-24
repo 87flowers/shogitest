@@ -50,7 +50,8 @@ impl Tournament for ReporterWrapper {
             match result.outcome.winner() {
                 Some(shogi::Color::Sente) => "1-0",
                 Some(shogi::Color::Gote) => "0-1",
-                None => "1/2-1/2",
+                None if result.outcome.is_draw() => "1/2-1/2",
+                None => "undetermined",
             },
             result.outcome.to_string(),
         );

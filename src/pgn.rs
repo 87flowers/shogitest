@@ -36,7 +36,8 @@ impl PgnWriter {
         let result_str = match match_result.outcome.winner() {
             Some(shogi::Color::Sente) => "1-0",
             Some(shogi::Color::Gote) => "0-1",
-            None => "1/2-1/2",
+            None if match_result.outcome.is_draw() => "1/2-1/2",
+            None => "undetermined"
         };
 
         Self::write_header(f, "Event", &self.meta.event_name)?;

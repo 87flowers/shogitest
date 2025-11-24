@@ -137,10 +137,6 @@ impl Engine {
         &self.name
     }
 
-    pub fn builder(&self) -> &EngineBuilder {
-        &self.builder
-    }
-
     pub fn write_line(&mut self, line: &str) -> Result<()> {
         trace!("{} < {line}", self.name());
         writeln!(self.stdin, "{line}")

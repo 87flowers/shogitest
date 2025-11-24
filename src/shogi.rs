@@ -135,15 +135,11 @@ impl fmt::Display for Square {
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub struct Delta {
-    file: i8,
-    rank: i8,
+    pub file: i8,
+    pub rank: i8,
 }
 
 impl Delta {
-    pub fn new(file: i8, rank: i8) -> Delta {
-        Delta { file, rank }
-    }
-
     pub fn normalize_to_sente(self, piece_color: Color) -> Delta {
         match piece_color {
             Color::Sente => self,
@@ -658,6 +654,7 @@ impl Position {
         ALL_MOVES.iter().any(|&m| self.is_legal(m))
     }
 
+    #[cfg(test)]
     pub fn legal_moves(&self) -> Vec<Move> {
         ALL_MOVES
             .iter()
@@ -808,6 +805,7 @@ impl Position {
         Some(hand)
     }
 
+    #[cfg(test)]
     fn perft(&self, depth: usize, print: bool) -> u64 {
         if depth == 0 {
             return 1;
