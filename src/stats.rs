@@ -21,6 +21,13 @@ fn logistic_elo(score: f64) -> f64 {
     -400.0 * (1.0 / score - 1.0).log10()
 }
 
+// See:
+// - Michel Van den Bergh. Normalized Elo, https://cantate.be/Fishtest/normalized_elo.pdf
+// - Michel Van den Bergh. Comments On Normalized Elo, https://cantate.be/Fishtest/normalized_elo_practical.pdf
+fn normalized_elo(score: f64, variance: f64) -> f64 {
+    (score - 0.5) / (2.0 * variance).sqrt() * (800.0 / f64::ln(10.0))
+}
+
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Wdl {
     pub w: u64,
@@ -63,30 +70,8 @@ impl Wdl {
         [self.l as f64 / gc, self.d as f64 / gc, self.w as f64 / gc]
     }
 
-    pub fn points(&self) -> f64 {
-        self.w as f64 * 1.0 + self.d as f64 * 0.5
-    }
-
     pub fn score(&self) -> f64 {
         score(self.to_probs())
-    }
-
-    pub fn variance(&self) -> f64 {
-        variance(self.to_probs(), self.score())
-    }
-
-    pub fn logistic_elo(&self) -> (f64, f64) {
-        let score = self.score();
-        let variance = self.variance();
-        let per_game_variance = variance / self.game_count() as f64;
-        let score_lower = score - NORM_PPF_0_975 * per_game_variance.sqrt();
-        let score_upper = score + NORM_PPF_0_975 * per_game_variance.sqrt();
-
-        let elo_lower = logistic_elo(score_lower);
-        let elo = logistic_elo(score);
-        let elo_upper = logistic_elo(score_upper);
-
-        (elo, (elo_upper - elo_lower) / 2.0)
     }
 }
 
@@ -185,27 +170,19 @@ impl Penta {
         }
     }
 
-    pub fn game_count(&self) -> u64 {
+    pub fn pair_count(&self) -> u64 {
         self.ll + self.dl + self.dd + self.wl + self.wd + self.ww
     }
 
     pub fn to_probs(self) -> [f64; 5] {
-        let gc = self.game_count() as f64;
+        let pc = self.pair_count() as f64;
         [
-            self.ll as f64 / gc,
-            self.dl as f64 / gc,
-            (self.dd + self.wl) as f64 / gc,
-            self.wd as f64 / gc,
-            self.ww as f64 / gc,
+            self.ll as f64 / pc,
+            self.dl as f64 / pc,
+            (self.dd + self.wl) as f64 / pc,
+            self.wd as f64 / pc,
+            self.ww as f64 / pc,
         ]
-    }
-
-    pub fn points(&self) -> f64 {
-        self.dl as f64 * 0.5
-            + self.dd as f64 * 1.0
-            + self.wl as f64 * 1.0
-            + self.wd as f64 * 1.5
-            + self.ww as f64 * 2.0
     }
 
     pub fn score(&self) -> f64 {
@@ -219,13 +196,27 @@ impl Penta {
     pub fn logistic_elo(&self) -> (f64, f64) {
         let score = self.score();
         let variance = self.variance();
-        let per_game_variance = variance / self.game_count() as f64;
-        let score_lower = score - NORM_PPF_0_975 * per_game_variance.sqrt();
-        let score_upper = score + NORM_PPF_0_975 * per_game_variance.sqrt();
+        let per_pair_variance = variance / self.pair_count() as f64;
+        let score_lower = score - NORM_PPF_0_975 * per_pair_variance.sqrt();
+        let score_upper = score + NORM_PPF_0_975 * per_pair_variance.sqrt();
 
         let elo_lower = logistic_elo(score_lower);
         let elo = logistic_elo(score);
         let elo_upper = logistic_elo(score_upper);
+
+        (elo, (elo_upper - elo_lower) / 2.0)
+    }
+
+    pub fn normalized_elo(&self) -> (f64, f64) {
+        let score = self.score();
+        let variance = self.variance();
+        let per_pair_variance = variance / self.pair_count() as f64;
+        let score_lower = score - NORM_PPF_0_975 * per_pair_variance.sqrt();
+        let score_upper = score + NORM_PPF_0_975 * per_pair_variance.sqrt();
+
+        let elo_lower = normalized_elo(score_lower, variance);
+        let elo = normalized_elo(score, variance);
+        let elo_upper = normalized_elo(score_upper, variance);
 
         (elo, (elo_upper - elo_lower) / 2.0)
     }

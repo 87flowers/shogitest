@@ -2,7 +2,7 @@ use std::{cmp::Ordering, collections::HashMap, path::Path};
 
 use crate::{
     cli,
-    shogi::{Color, GameOutcome},
+    shogi::Color,
     stats::{Penta, Wdl},
     tournament::{MatchResult, MatchTicket, Tournament, TournamentState},
 };
@@ -100,6 +100,7 @@ impl StatsWrapper {
         let wdl = self.all_wdl_for(1);
         let penta = self.all_penta_for(1);
         let (lelo, lelo_diff) = penta.logistic_elo();
+        let (nelo, nelo_diff) = penta.normalized_elo();
 
         let tc = compare(|i| self.engine_options[i].time_control.to_string());
         let threads = compare(|i| {
@@ -127,7 +128,7 @@ impl StatsWrapper {
             "Results of {} vs {} ({tc}, {threads}, {hash}, {book}):",
             self.engine_names[0], self.engine_names[1]
         );
-        println!("Elo: {lelo:.2} +/- {lelo_diff:.2}");
+        println!("Elo: {lelo:.2} +/- {lelo_diff:.2}, nElo: {nelo:.2} +/- {nelo_diff:.2}");
         println!(
             "Games: {}, Wins: {}, Draws: {}, Losses: {} (Score: {:.2}%)",
             wdl.game_count(),
@@ -142,16 +143,17 @@ impl StatsWrapper {
         );
     }
     pub fn print_table(&self) {
-        let mut table = Vec::<(&str, f64, Penta)>::new();
+        let mut table = Vec::<(&str, f64, Wdl, Penta)>::new();
         let mut max_name_len = 25;
 
         for (i, name) in self.engine_names.iter().enumerate() {
             max_name_len = max_name_len.max(name.len());
 
+            let wdl = self.all_wdl_for(i);
             let penta = self.all_penta_for(i);
             let (elo, _) = penta.logistic_elo();
 
-            table.push((name, elo, penta));
+            table.push((name, elo, wdl, penta));
         }
 
         table.sort_by(|x, y| {
@@ -168,11 +170,11 @@ impl StatsWrapper {
             "{:>4} {:<max_name_len$} {:>10} {:>10} {:>10} {:>10} {:>25}",
             "Rank", "Name", "Elo", "+/-", "Games", "Score", "Penta"
         );
-        for (i, (name, elo, penta)) in table.iter().enumerate() {
+        for (i, (name, elo, wdl, penta)) in table.iter().enumerate() {
             let rank = i + 1;
             let (_, elo_diff) = penta.logistic_elo();
-            let game_count = penta.game_count();
-            let score = penta.score() * 100.0;
+            let game_count = wdl.game_count();
+            let score = wdl.score() * 100.0;
             let penta = format!("{penta}");
             println!(
                 "{rank:>4} {name:<max_name_len$} {elo:>10.2} {elo_diff:>10.2} {game_count:>10} {score:>9.2}% {penta:>25}"
