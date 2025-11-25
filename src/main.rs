@@ -10,6 +10,7 @@ mod engine;
 mod pgn;
 mod runner;
 mod shogi;
+mod sprt;
 mod stats;
 mod tc;
 mod tournament;
@@ -55,11 +56,20 @@ fn main() -> std::io::Result<()> {
         )?);
     }
 
+    let sprt_parameters = if let Some(sprt) = cli_options.sprt {
+        Some(sprt::SprtParameters::new(
+            sprt.nelo0, sprt.nelo1, sprt.alpha, sprt.beta,
+        ))
+    } else {
+        None
+    };
+
     tournament = Box::new(tournament::StatsWrapper::new(
         tournament,
         engine_names.clone(),
         cli_options.engines.clone(),
         cli_options.book.map(|b| b.file.clone()),
+        sprt_parameters,
     ));
 
     tournament = Box::new(tournament::ReporterWrapper::new(

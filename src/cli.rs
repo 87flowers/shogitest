@@ -78,6 +78,25 @@ impl Default for ResignAdjudicationOptions {
 }
 
 #[derive(Debug, Clone)]
+pub struct SprtOptions {
+    pub nelo0: f64,
+    pub nelo1: f64,
+    pub alpha: f64,
+    pub beta: f64,
+}
+
+impl Default for SprtOptions {
+    fn default() -> Self {
+        SprtOptions {
+            nelo0: 0.0,
+            nelo1: 0.0,
+            alpha: 0.0,
+            beta: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct CliOptions {
     pub engines: Vec<EngineOptions>,
     pub book: Option<BookOptions>,
@@ -89,6 +108,7 @@ pub struct CliOptions {
     pub pgn: Option<PgnOutOptions>,
     pub adjudication: AdjudicationOptions,
     pub report_interval: Option<u64>,
+    pub sprt: Option<SprtOptions>,
 }
 
 impl CliOptions {
@@ -116,6 +136,7 @@ impl Default for CliOptions {
             pgn: None,
             adjudication: AdjudicationOptions::default(),
             report_interval: Some(10),
+            sprt: None,
         }
     }
 }
@@ -538,6 +559,60 @@ pub fn parse() -> Option<CliOptions> {
                 }
             }
 
+            "-sprt" => {
+                let mut sprt = SprtOptions::default();
+                while let Some(option) = it.peek()
+                    && !option.starts_with("-")
+                    && let Some((name, value)) = option.split_once('=')
+                {
+                    it.next(); // consume token
+
+                    match name {
+                        "elo0" => {
+                            sprt.nelo0 = match value.parse::<f64>() {
+                                Ok(value) => value,
+                                _ => {
+                                    eprintln!("Invalid elo0 {value} for -sprt");
+                                    return None;
+                                }
+                            };
+                        }
+                        "elo1" => {
+                            sprt.nelo1 = match value.parse::<f64>() {
+                                Ok(value) => value,
+                                _ => {
+                                    eprintln!("Invalid elo1 {value} for -sprt");
+                                    return None;
+                                }
+                            };
+                        }
+                        "alpha" => {
+                            sprt.alpha = match value.parse::<f64>() {
+                                Ok(value) => value,
+                                _ => {
+                                    eprintln!("Invalid alpha {value} for -sprt");
+                                    return None;
+                                }
+                            };
+                        }
+                        "beta" => {
+                            sprt.beta = match value.parse::<f64>() {
+                                Ok(value) => value,
+                                _ => {
+                                    eprintln!("Invalid beta {value} for -sprt");
+                                    return None;
+                                }
+                            };
+                        }
+                        _ => {
+                            eprintln!("Invalid key {name} for -sprt");
+                            return None;
+                        }
+                    }
+                }
+                options.sprt = Some(sprt);
+            }
+
             "-testEnv" => {
                 options.report_interval = None;
             }
@@ -552,6 +627,11 @@ pub fn parse() -> Option<CliOptions> {
         for engine in &mut options.engines {
             parse_engine_option(engine, &name, &value);
         }
+    }
+
+    if options.sprt.is_some() && options.engines.len() != 2 {
+        eprintln!("SPRT can only be done on two engines");
+        return None;
     }
 
     Some(options)

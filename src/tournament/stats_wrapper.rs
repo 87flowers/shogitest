@@ -3,6 +3,7 @@ use std::{cmp::Ordering, collections::HashMap, path::Path};
 use crate::{
     cli,
     shogi::Color,
+    sprt::SprtParameters,
     stats::{Penta, Wdl},
     tournament::{MatchResult, MatchTicket, Tournament, TournamentState},
 };
@@ -15,6 +16,10 @@ pub struct StatsWrapper {
     wdl_board: HashMap<(usize, usize), Wdl>,
     penta_board: HashMap<(usize, usize), Penta>,
     pending_pairing: HashMap<u64, ((usize, usize), Option<Color>)>,
+    sprt: Option<SprtParameters>,
+    match_ticket_count: u64,
+    match_complete_count: u64,
+    should_terminate: bool,
 }
 
 impl StatsWrapper {
@@ -23,7 +28,12 @@ impl StatsWrapper {
         engine_names: Vec<String>,
         engine_options: Vec<cli::EngineOptions>,
         book_name: Option<String>,
+        sprt: Option<SprtParameters>,
     ) -> StatsWrapper {
+        assert!(engine_names.len() == engine_options.len());
+        if sprt.is_some() {
+            assert!(engine_names.len() == 2);
+        }
         StatsWrapper {
             inner,
             engine_names,
@@ -32,6 +42,10 @@ impl StatsWrapper {
             wdl_board: HashMap::new(),
             penta_board: HashMap::new(),
             pending_pairing: HashMap::new(),
+            sprt,
+            match_ticket_count: 0,
+            match_complete_count: 0,
+            should_terminate: false,
         }
     }
     fn add_result(&mut self, match_id: u64, (a, b): (usize, usize), result: Option<Color>) {
@@ -141,6 +155,16 @@ impl StatsWrapper {
             "Pntml(0-2): {penta}, DD/WL Ratio: {:.2}",
             penta.dd_wl_ratio()
         );
+        if let Some(sprt) = self.sprt
+            && penta.pair_count() > 0
+        {
+            let llr = sprt.llr(penta);
+            let (llr_lower_bound, llr_upper_bound) = sprt.llr_bounds();
+            let (nelo_lower_bound, nelo_upper_bound) = sprt.nelo_bounds();
+            println!(
+                "LLR: {llr:.2} ({llr_lower_bound:.2}, {llr_upper_bound:.2}) [{nelo_lower_bound:.2}, {nelo_upper_bound:.2}]"
+            );
+        }
     }
     pub fn print_table(&self) {
         let mut table = Vec::<(&str, f64, Wdl, Penta)>::new();
@@ -184,11 +208,34 @@ impl StatsWrapper {
             );
         }
     }
+    fn next(&mut self) {
+        self.match_ticket_count += 1;
+    }
+    fn next_should_terminate(&self) -> bool {
+        self.should_terminate
+    }
+    fn match_complete(&mut self) {
+        self.match_complete_count += 1;
+        if let Some(sprt) = self.sprt
+            && !self.should_terminate
+        {
+            let penta = self.all_penta_for(1);
+            self.should_terminate = sprt.should_terminate(penta);
+        }
+    }
+    fn match_completete_should_terminate(&self) -> bool {
+        self.should_terminate && self.match_ticket_count == self.match_complete_count
+    }
 }
 
 impl Tournament for StatsWrapper {
     fn next(&mut self) -> Option<MatchTicket> {
-        self.inner.as_mut().next()
+        if self.next_should_terminate() {
+            None
+        } else {
+            self.next();
+            self.inner.as_mut().next()
+        }
     }
     fn match_started(&mut self, ticket: MatchTicket) {
         self.inner.as_mut().match_started(ticket)
@@ -196,7 +243,13 @@ impl Tournament for StatsWrapper {
     fn match_complete(&mut self, result: MatchResult) -> TournamentState {
         let e = &result.ticket.engines;
         self.add_result(result.ticket.id, (e[0], e[1]), result.outcome.winner());
-        self.inner.as_mut().match_complete(result)
+        self.match_complete();
+        let state = self.inner.as_mut().match_complete(result);
+        if self.match_completete_should_terminate() {
+            TournamentState::Stop
+        } else {
+            state
+        }
     }
     fn print_interval_report(&self) {
         self.print_stats();
