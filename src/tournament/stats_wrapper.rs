@@ -14,7 +14,7 @@ pub struct StatsWrapper {
     book_name: Option<String>,
     wdl_board: HashMap<(usize, usize), Wdl>,
     penta_board: HashMap<(usize, usize), Penta>,
-    pending_pairing: HashMap<u64, ((usize, usize), GameOutcome)>,
+    pending_pairing: HashMap<u64, ((usize, usize), Option<Color>)>,
 }
 
 impl StatsWrapper {
@@ -49,10 +49,44 @@ impl StatsWrapper {
         let old_value = self.wdl_board.get(&key).cloned().unwrap_or_default();
         self.wdl_board.insert(key, old_value + wdl);
     }
-    pub fn all_stats_for(&self, engine_id: usize) -> Wdl {
+    fn add_penta_half(&mut self, match_id: u64, (a, b): (usize, usize), result1: Option<Color>) {
+        let sibling = match_id ^ 1;
+        if let Some(((b2, a2), result2)) = self.pending_pairing.remove(&sibling) {
+            assert!(a == a2 && b == b2);
+
+            let penta = match (result1, result2.map(|c| !c)) {
+                (Some(Color::Sente), Some(Color::Sente)) => Penta::ONE_WW,
+                (Some(Color::Sente), None) => Penta::ONE_WD,
+                (None, Some(Color::Sente)) => Penta::ONE_WD,
+                (None, None) => Penta::ONE_DD,
+                (Some(Color::Gote), Some(Color::Sente)) => Penta::ONE_WL,
+                (Some(Color::Sente), Some(Color::Gote)) => Penta::ONE_WL,
+                (Some(Color::Gote), None) => Penta::ONE_DL,
+                (None, Some(Color::Gote)) => Penta::ONE_DL,
+                (Some(Color::Gote), Some(Color::Gote)) => Penta::ONE_LL,
+            };
+
+            let mut insert = |key: (usize, usize), penta: Penta| {
+                let old_value = self.penta_board.get(&key).cloned().unwrap_or_default();
+                self.penta_board.insert(key, old_value + penta);
+            };
+
+            insert((a, b), penta);
+            insert((b, a), penta.flip());
+        } else {
+            self.pending_pairing.insert(match_id, ((a, b), result1));
+        }
+    }
+    pub fn all_wdl_for(&self, engine_id: usize) -> Wdl {
         (0..self.engine_names.len())
             .map(|i| (engine_id, i))
             .map(|k| self.wdl_board.get(&k).cloned().unwrap_or_default())
+            .sum()
+    }
+    pub fn all_penta_for(&self, engine_id: usize) -> Penta {
+        (0..self.engine_names.len())
+            .map(|i| (engine_id, i))
+            .map(|k| self.penta_board.get(&k).cloned().unwrap_or_default())
             .sum()
     }
     pub fn print_stats(&self) {
@@ -63,8 +97,9 @@ impl StatsWrapper {
         }
     }
     pub fn print_head_to_head(&self) {
-        let wdl = self.all_stats_for(1);
-        let (lelo, lelo_diff) = wdl.logistic_elo();
+        let wdl = self.all_wdl_for(1);
+        let penta = self.all_penta_for(1);
+        let (lelo, lelo_diff) = penta.logistic_elo();
 
         let tc = compare(|i| self.engine_options[i].time_control.to_string());
         let threads = compare(|i| {
@@ -94,26 +129,29 @@ impl StatsWrapper {
         );
         println!("Elo: {lelo:.2} +/- {lelo_diff:.2}");
         println!(
-            "Games: {}, Wins: {}, Draws: {}, Losses: {}",
+            "Games: {}, Wins: {}, Draws: {}, Losses: {} (Score: {:.2}%)",
             wdl.game_count(),
             wdl.w,
             wdl.d,
-            wdl.l
+            wdl.l,
+            wdl.score() * 100.0
+        );
+        println!(
+            "Pntml(0-2): {penta}, DD/WL Ratio: {:.2}",
+            penta.dd_wl_ratio()
         );
     }
     pub fn print_table(&self) {
-        let mut table = Vec::<(&str, f64, f64, u64, f64)>::new();
+        let mut table = Vec::<(&str, f64, Penta)>::new();
         let mut max_name_len = 25;
 
         for (i, name) in self.engine_names.iter().enumerate() {
             max_name_len = max_name_len.max(name.len());
 
-            let wdl = self.all_stats_for(i);
-            let (elo, elo_diff) = wdl.logistic_elo();
-            let game_count = wdl.game_count();
-            let points = wdl.points();
+            let penta = self.all_penta_for(i);
+            let (elo, _) = penta.logistic_elo();
 
-            table.push((name, elo, elo_diff, game_count, points));
+            table.push((name, elo, penta));
         }
 
         table.sort_by(|x, y| {
@@ -127,13 +165,17 @@ impl StatsWrapper {
         });
 
         println!(
-            "{:>4} {:<max_name_len$} {:>10} {:>10} {:>10} {:>10}",
-            "Rank", "Name", "Elo", "+/-", "Games", "Score"
+            "{:>4} {:<max_name_len$} {:>10} {:>10} {:>10} {:>10} {:>25}",
+            "Rank", "Name", "Elo", "+/-", "Games", "Score", "Penta"
         );
-        for (i, (name, elo, elo_diff, game_count, points)) in table.iter().enumerate() {
+        for (i, (name, elo, penta)) in table.iter().enumerate() {
             let rank = i + 1;
+            let (_, elo_diff) = penta.logistic_elo();
+            let game_count = penta.game_count();
+            let score = penta.score() * 100.0;
+            let penta = format!("{penta}");
             println!(
-                "{rank:>4} {name:<max_name_len$} {elo:>10.2} {elo_diff:>10.2} {game_count:>10} {points:>10.1}"
+                "{rank:>4} {name:<max_name_len$} {elo:>10.2} {elo_diff:>10.2} {game_count:>10} {score:>9.2}% {penta:>25}"
             );
         }
     }

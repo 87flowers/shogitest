@@ -174,6 +174,17 @@ impl Penta {
         ww: 0,
     };
 
+    pub fn flip(&self) -> Penta {
+        Penta {
+            ll: self.ww,
+            dl: self.wd,
+            dd: self.dd,
+            wl: self.wl,
+            wd: self.dl,
+            ww: self.ll,
+        }
+    }
+
     pub fn game_count(&self) -> u64 {
         self.ll + self.dl + self.dd + self.wl + self.wd + self.ww
     }
@@ -217,5 +228,23 @@ impl Penta {
         let elo_upper = logistic_elo(score_upper);
 
         (elo, (elo_upper - elo_lower) / 2.0)
+    }
+
+    pub fn dd_wl_ratio(&self) -> f64 {
+        self.dd as f64 / self.wl as f64
+    }
+}
+
+impl std::fmt::Display for Penta {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[{}, {}, {}, {}, {}]",
+            self.ll,
+            self.dl,
+            self.dd + self.wl,
+            self.wd,
+            self.ww
+        )
     }
 }
