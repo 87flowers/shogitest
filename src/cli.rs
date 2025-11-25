@@ -236,7 +236,7 @@ pub fn parse() -> Option<CliOptions> {
             "-engine" => {
                 let mut engine = EngineOptions::default();
                 while let Some(option) = it.peek()
-                    && option.starts_with("-")
+                    && !option.starts_with("-")
                     && let Some((name, value)) = option.split_once('=')
                 {
                     it.next(); // consume token
@@ -248,7 +248,7 @@ pub fn parse() -> Option<CliOptions> {
 
             "-each" => {
                 while let Some(option) = it.peek()
-                    && option.starts_with("-")
+                    && !option.starts_with("-")
                     && let Some((name, value)) = option.split_once('=')
                 {
                     it.next(); // consume token
@@ -265,7 +265,7 @@ pub fn parse() -> Option<CliOptions> {
 
                 let mut book = BookOptions::default();
                 while let Some(option) = it.peek()
-                    && option.starts_with("-")
+                    && !option.starts_with("-")
                     && let Some((name, value)) = option.split_once('=')
                 {
                     it.next(); // consume token
@@ -370,7 +370,7 @@ pub fn parse() -> Option<CliOptions> {
             "-pgnout" => {
                 let mut pgn_out = PgnOutOptions::default();
                 while let Some(option) = it.peek()
-                    && option.starts_with("-")
+                    && !option.starts_with("-")
                     && let Some((name, value)) = option.split_once('=')
                 {
                     it.next(); // consume token
@@ -440,7 +440,7 @@ pub fn parse() -> Option<CliOptions> {
             "-draw" => {
                 let mut draw = DrawAdjudicationOptions::default();
                 while let Some(option) = it.peek()
-                    && option.starts_with("-")
+                    && !option.starts_with("-")
                     && let Some((name, value)) = option.split_once('=')
                 {
                     it.next(); // consume token
@@ -485,7 +485,7 @@ pub fn parse() -> Option<CliOptions> {
             "-resign" => {
                 let mut resign = ResignAdjudicationOptions::default();
                 while let Some(option) = it.peek()
-                    && option.starts_with("-")
+                    && !option.starts_with("-")
                     && let Some((name, value)) = option.split_once('=')
                 {
                     it.next(); // consume token
