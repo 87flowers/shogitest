@@ -144,16 +144,18 @@ impl StatsWrapper {
     }
     pub fn print_table(&self) {
         let mut table = Vec::<(&str, f64, Wdl, Penta)>::new();
-        let mut max_name_len = 25;
+        let mut max_name_len = 20;
+        let mut max_penta_len = 2;
 
         for (i, name) in self.engine_names.iter().enumerate() {
-            max_name_len = max_name_len.max(name.len());
-
             let wdl = self.all_wdl_for(i);
             let penta = self.all_penta_for(i);
-            let (elo, _) = penta.logistic_elo();
+            let (lelo, _) = penta.logistic_elo();
 
-            table.push((name, elo, wdl, penta));
+            table.push((name, lelo, wdl, penta));
+
+            max_name_len = max_name_len.max(name.len());
+            max_penta_len = max_penta_len.max(format!("{penta}").len());
         }
 
         table.sort_by(|x, y| {
@@ -167,17 +169,18 @@ impl StatsWrapper {
         });
 
         println!(
-            "{:>4} {:<max_name_len$} {:>10} {:>10} {:>10} {:>10} {:>25}",
-            "Rank", "Name", "Elo", "+/-", "Games", "Score", "Penta"
+            "{:>4} {:<max_name_len$} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}  {:>max_penta_len$}",
+            "Rank", "Name", "Elo", "+/-", "nElo", "+/-", "Games", "Score", "Penta"
         );
-        for (i, (name, elo, wdl, penta)) in table.iter().enumerate() {
+        for (i, (name, lelo, wdl, penta)) in table.iter().enumerate() {
             let rank = i + 1;
-            let (_, elo_diff) = penta.logistic_elo();
+            let (_, lelo_diff) = penta.logistic_elo();
+            let (nelo, nelo_diff) = penta.logistic_elo();
             let game_count = wdl.game_count();
             let score = wdl.score() * 100.0;
             let penta = format!("{penta}");
             println!(
-                "{rank:>4} {name:<max_name_len$} {elo:>10.2} {elo_diff:>10.2} {game_count:>10} {score:>9.2}% {penta:>25}"
+                "{rank:>4} {name:<max_name_len$} {lelo:>8.2} {lelo_diff:>8.2} {nelo:>8.2} {nelo_diff:>8.2} {game_count:>8} {score:>7.2}%  {penta:>max_penta_len$}"
             );
         }
     }
