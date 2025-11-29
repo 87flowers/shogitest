@@ -233,8 +233,10 @@ impl Engine {
         stm: crate::shogi::Color,
         timeout: Option<Duration>,
     ) -> EngineResult<MoveRecord> {
-        let mut mr = MoveRecord::default();
-        mr.stm = Some(stm);
+        let mut mr = MoveRecord {
+            stm: Some(stm),
+            ..MoveRecord::default()
+        };
         match self.read_with_timeout(timeout, |line| {
             let mut it = line.split_ascii_whitespace();
             match it.next() {

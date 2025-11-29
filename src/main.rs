@@ -57,13 +57,9 @@ fn main() -> std::io::Result<()> {
         )?);
     }
 
-    let sprt_parameters = if let Some(sprt) = cli_options.sprt {
-        Some(sprt::SprtParameters::new(
-            sprt.nelo0, sprt.nelo1, sprt.alpha, sprt.beta,
-        ))
-    } else {
-        None
-    };
+    let sprt_parameters = cli_options
+        .sprt
+        .map(|sprt| sprt::SprtParameters::new(sprt.nelo0, sprt.nelo1, sprt.alpha, sprt.beta));
 
     tournament = Box::new(tournament::StatsWrapper::new(
         tournament,

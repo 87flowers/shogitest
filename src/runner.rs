@@ -192,7 +192,7 @@ fn do_adjudication(
                     if Some(stm) == m.stm {
                         cp <= -resign.score
                     } else {
-                        cp >= resign.score as i32
+                        cp >= resign.score
                     }
                 }
                 Score::Mate(ply) => {
@@ -277,7 +277,7 @@ fn run_match(
                     match_result.outcome = GameOutcome::LossByClock(stm);
                 }
 
-                do_adjudication(stm, &adjudication, &mut match_result);
+                do_adjudication(stm, adjudication, &mut match_result);
             }
 
             EngineResult::Timeout => {
