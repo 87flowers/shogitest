@@ -146,6 +146,7 @@ pub struct EngineOptions {
     pub builder: engine::EngineBuilder,
     pub time_control: tc::TimeControl,
     pub time_margin: Duration,
+    pub restart: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +223,13 @@ fn parse_engine_option(engine: &mut EngineOptions, name: &str, value: &str) {
             Ok(value) => engine.time_margin = Duration::from_millis(value),
             Err(_) => {
                 eprintln!("Expected number for timemargin option");
+            }
+        },
+        "restart" => match value {
+            "on" => engine.restart = true,
+            "off" => engine.restart = false,
+            _ => {
+                eprintln!("Invalid value {value} for restart engine option");
             }
         },
         name if let Some(optionname) = name.strip_prefix("option.") => {

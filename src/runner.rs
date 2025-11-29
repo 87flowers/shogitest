@@ -236,6 +236,9 @@ fn run_match(
     ];
 
     for i in 0..2 {
+        if engine_options[ticket.engines[i]].restart {
+            engines[ticket.engines[i]].restart()?;
+        }
         engines[ticket.engines[i]].isready()?;
         engines[ticket.engines[i]].usinewgame()?;
     }
