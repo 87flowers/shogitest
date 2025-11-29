@@ -8,12 +8,28 @@ use std::{
 };
 use wait_timeout::ChildExt;
 
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+
 #[derive(Debug, Clone, Default)]
 pub enum Score {
     #[default]
     None,
     Cp(i32),
     Mate(i32),
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ReadResult {
+    Ok,
+    Timeout,
+    Disconnected,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ReadState {
+    Continue,
+    Stop,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -56,6 +72,7 @@ impl EngineBuilder {
         let mut engine = Engine {
             child,
             stdout,
+            read_buf: Vec::new(),
             stdin,
             name: self.name.clone().unwrap_or(self.cmd.to_string()),
             builder: self.clone(),
@@ -63,26 +80,33 @@ impl EngineBuilder {
 
         engine.write_line("usi")?;
 
-        loop {
-            let input = engine.read_line()?;
-            let mut it = input.split_whitespace();
+        let mut usi_name: Option<String> = None;
+        engine.read_with_timeout(Some(5 * Duration::SECOND), |line| {
+            let mut it = line.split_whitespace();
             match it.next() {
-                Some("usiok") => break,
-                Some("id") => match it.next() {
-                    Some("name") => {
-                        if self.name.is_none()
-                            && let Some(name) = it.remainder()
-                        {
-                            engine.name = name.trim().to_string();
+                Some("usiok") => ReadState::Stop,
+                Some("id") => {
+                    match it.next() {
+                        Some("name") => {
+                            if let Some(name) = it.remainder() {
+                                usi_name = Some(name.trim().to_string());
+                            }
+                        }
+                        Some("author") => {}
+                        s => {
+                            dbg!(s);
                         }
                     }
-                    Some("author") => {}
-                    s => {
-                        dbg!(s);
-                    }
-                },
-                _ => {}
+                    ReadState::Continue
+                }
+                _ => ReadState::Continue,
             }
+        })?;
+
+        if let Some(usi_name) = usi_name
+            && self.name.is_none()
+        {
+            engine.name = usi_name;
         }
 
         for (k, v) in &self.usi_options {
@@ -105,6 +129,7 @@ impl EngineBuilder {
 pub struct Engine {
     child: Child,
     stdout: BufReader<ChildStdout>,
+    read_buf: Vec<u8>,
     stdin: ChildStdin,
     name: String,
     builder: EngineBuilder,
@@ -146,13 +171,14 @@ impl Engine {
     pub fn isready(&mut self) -> Result<()> {
         self.write_line("isready")?;
         self.flush()?;
-        loop {
-            // TODO: Timeout
-            let line = self.read_line()?;
+        self.read_with_timeout(Some(5 * Duration::SECOND), |line| {
             if line.trim().eq_ignore_ascii_case("readyok") {
-                return Ok(());
+                ReadState::Stop
+            } else {
+                ReadState::Continue
             }
-        }
+        })?;
+        Ok(())
     }
 
     pub fn usinewgame(&mut self) -> Result<()> {
@@ -168,114 +194,158 @@ impl Engine {
         Ok(())
     }
 
-    pub fn wait_for_bestmove(&mut self) -> Result<MoveRecord> {
+    pub fn wait_for_bestmove(&mut self, timeout: Option<Duration>) -> Result<MoveRecord> {
         let mut mr = MoveRecord::default();
-        loop {
-            // TODO: Timeout
-            let line = self.read_line()?;
-            if line.trim().starts_with("info") {
-                let mut it = line.trim().split(' ').skip(1);
-                while let Some(tok) = it.next() {
-                    match tok {
-                        "string" => break,
-                        "depth" => {
-                            if let Some(value) = it.next()
-                                && let Ok(value) = value.parse::<u32>()
-                            {
-                                mr.depth = value;
-                            }
-                        }
-                        "seldepth" => {
-                            if let Some(value) = it.next()
-                                && let Ok(value) = value.parse::<u32>()
-                            {
-                                mr.seldepth = value;
-                            }
-                        }
-                        "nodes" => {
-                            if let Some(value) = it.next()
-                                && let Ok(value) = value.parse::<u64>()
-                            {
-                                mr.nodes = value;
-                            }
-                        }
-                        "nps" => {
-                            if let Some(value) = it.next()
-                                && let Ok(value) = value.parse::<u64>()
-                            {
-                                mr.nps = value;
-                            }
-                        }
-                        "time" => {
-                            if let Some(value) = it.next()
-                                && let Ok(value) = value.parse::<u64>()
-                            {
-                                mr.engine_time = value;
-                            }
-                        }
-                        "hashfull" => {
-                            if let Some(value) = it.next()
-                                && let Ok(value) = value.parse::<u32>()
-                            {
-                                mr.hashfull = value;
-                            }
-                        }
-                        "score" => match it.next() {
-                            Some(x) => match x {
-                                "cp" => {
-                                    if let Some(value) = it.next()
-                                        && let Ok(value) = value.parse::<i32>()
-                                    {
-                                        mr.score = Score::Cp(value);
-                                    }
+        self.read_with_timeout(timeout, |line| {
+            let mut it = line.split_ascii_whitespace();
+            match it.next() {
+                Some("info") => {
+                    while let Some(tok) = it.next() {
+                        match tok {
+                            "string" => break,
+                            "depth" => {
+                                if let Some(value) = it.next()
+                                    && let Ok(value) = value.parse::<u32>()
+                                {
+                                    mr.depth = value;
                                 }
-                                "mate" => {
-                                    if let Some(value) = it.next()
-                                        && let Ok(value) = value.parse::<i32>()
-                                    {
-                                        mr.score = Score::Mate(value);
-                                    }
+                            }
+                            "seldepth" => {
+                                if let Some(value) = it.next()
+                                    && let Ok(value) = value.parse::<u32>()
+                                {
+                                    mr.seldepth = value;
                                 }
-                                _ => continue,
+                            }
+                            "nodes" => {
+                                if let Some(value) = it.next()
+                                    && let Ok(value) = value.parse::<u64>()
+                                {
+                                    mr.nodes = value;
+                                }
+                            }
+                            "nps" => {
+                                if let Some(value) = it.next()
+                                    && let Ok(value) = value.parse::<u64>()
+                                {
+                                    mr.nps = value;
+                                }
+                            }
+                            "time" => {
+                                if let Some(value) = it.next()
+                                    && let Ok(value) = value.parse::<u64>()
+                                {
+                                    mr.engine_time = value;
+                                }
+                            }
+                            "hashfull" => {
+                                if let Some(value) = it.next()
+                                    && let Ok(value) = value.parse::<u32>()
+                                {
+                                    mr.hashfull = value;
+                                }
+                            }
+                            "score" => match it.next() {
+                                Some(x) => match x {
+                                    "cp" => {
+                                        if let Some(value) = it.next()
+                                            && let Ok(value) = value.parse::<i32>()
+                                        {
+                                            mr.score = Score::Cp(value);
+                                        }
+                                    }
+                                    "mate" => {
+                                        if let Some(value) = it.next()
+                                            && let Ok(value) = value.parse::<i32>()
+                                        {
+                                            mr.score = Score::Mate(value);
+                                        }
+                                    }
+                                    _ => continue,
+                                },
+                                None => continue,
                             },
-                            None => continue,
-                        },
-                        _ => continue,
+                            _ => continue,
+                        }
                     }
+                    ReadState::Continue
                 }
-            } else if line.trim().starts_with("bestmove") {
-                let mstr = line.trim().split(' ').nth(1).unwrap_or("");
-                mr.mstr = mstr.to_string();
-                if let Some(m) = shogi::Move::parse(mstr) {
-                    mr.m = m;
-                } else {
-                    error!(
-                        "{} (cmd={}) gave us invalid move: {mstr}",
-                        self.name(),
-                        self.builder.cmd
-                    );
+                Some("bestmove") => {
+                    let mstr = line.trim().split(' ').nth(1).unwrap_or("");
+                    mr.mstr = mstr.to_string();
+                    if let Some(m) = shogi::Move::parse(mstr) {
+                        mr.m = m;
+                    }
+                    ReadState::Stop
                 }
-                return Ok(mr);
+                _ => ReadState::Continue,
             }
-        }
+        })?;
+        Ok(mr)
     }
 
     pub fn flush(&mut self) -> Result<()> {
         self.stdin.flush()
     }
 
-    pub fn read_line(&mut self) -> Result<String> {
-        let mut input = String::new();
-        let count = self.stdout.read_line(&mut input)?;
-        if count == 0 {
-            error!("{} (cmd={}) disconnected", self.name(), self.builder.cmd);
-            Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "Read 0 bytes",
-            ))
-        } else {
-            trace!("{} > {}", self.name(), input.trim());
-            Ok(input)
+    #[cfg(unix)]
+    pub fn read_with_timeout<F>(
+        &mut self,
+        timeout: Option<Duration>,
+        mut f: F,
+    ) -> Result<ReadResult>
+    where
+        F: FnMut(String) -> ReadState,
+    {
+        let timeout_ms = match timeout {
+            Some(timeout) => timeout.as_millis().clamp(0, i32::MAX as u128) as i32,
+            None => -1,
+        };
+
+        loop {
+            let mut fds: [libc::pollfd; 1] = unsafe { std::mem::zeroed() };
+            fds[0].fd = self.stdout.get_mut().as_raw_fd();
+            fds[0].events = libc::POLLIN;
+
+            let ready_count = unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as u64, timeout_ms) };
+            if ready_count < 0 {
+                let err = std::io::Error::last_os_error();
+                match err.raw_os_error() {
+                    Some(libc::EINTR) | Some(libc::EAGAIN) => continue,
+                    _ => return Err(err),
+                }
+            }
+
+            assert!(ready_count as usize <= fds.len());
+
+            if ready_count == 0 {
+                return Ok(ReadResult::Timeout);
+            }
+
+            let read_buf = self.stdout.fill_buf()?;
+            let read_buf_len = read_buf.len();
+            self.read_buf.extend_from_slice(read_buf);
+            self.stdout.consume(read_buf_len);
+
+            while let Some(i) = memchr::memchr(b'\n', self.read_buf.as_slice()) {
+                let line = {
+                    let line = self.read_buf.drain(0..(i + 1));
+                    let Ok(line) = str::from_utf8(line.as_slice()) else {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "Received Invalid UTF-8",
+                        ));
+                    };
+                    line.to_string()
+                };
+
+                trace!("{} > {}", self.name(), line.trim());
+
+                match f(line) {
+                    ReadState::Continue => {}
+                    ReadState::Stop => return Ok(ReadResult::Ok),
+                }
+            }
         }
     }
 }

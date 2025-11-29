@@ -237,8 +237,9 @@ fn run_match(
     let mut game = shogi::Game::new(ticket.opening);
     loop {
         let stm = game.stm();
-
         let current_engine = &mut engines[ticket.engines[stm.to_index()]];
+
+        let bestmove_timeout = engine_time[stm.to_index()].bestmove_timeout();
 
         // TODO: Improve time measurement here
         let now = Instant::now();
@@ -250,7 +251,7 @@ fn run_match(
         ))?;
         current_engine.flush()?;
 
-        let mut move_record = current_engine.wait_for_bestmove()?;
+        let mut move_record = current_engine.wait_for_bestmove(bestmove_timeout)?;
         move_record.stm = Some(stm);
 
         let duration = Instant::now() - now;

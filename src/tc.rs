@@ -224,6 +224,20 @@ impl EngineTime {
             }
         }
     }
+
+    pub fn bestmove_timeout(&self) -> Option<Duration> {
+        let timeout_margin = 50 * Duration::MILLISECOND;
+        match self.tc {
+            TimeControl::None | TimeControl::Nodes(_) => None,
+            TimeControl::MoveTime(duration) => Some(timeout_margin + duration),
+            TimeControl::Byoyomi { base: _, byoyomi } => {
+                Some(timeout_margin + self.remaining + byoyomi)
+            }
+            TimeControl::Fischer { base: _, increment } => {
+                Some(timeout_margin + self.remaining + increment)
+            }
+        }
+    }
 }
 
 pub fn to_usi_string(color: Color, sente_time: &EngineTime, gote_time: &EngineTime) -> String {

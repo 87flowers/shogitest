@@ -1,5 +1,6 @@
-#![feature(str_split_whitespace_remainder)]
+#![feature(duration_constants)]
 #![feature(if_let_guard)]
+#![feature(str_split_whitespace_remainder)]
 
 use log::info;
 use rand::SeedableRng;

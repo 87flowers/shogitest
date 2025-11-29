@@ -199,7 +199,7 @@ impl StatsWrapper {
         for (i, (name, lelo, wdl, penta)) in table.iter().enumerate() {
             let rank = i + 1;
             let (_, lelo_diff) = penta.logistic_elo();
-            let (nelo, nelo_diff) = penta.logistic_elo();
+            let (nelo, nelo_diff) = penta.normalized_elo();
             let game_count = wdl.game_count();
             let score = wdl.score() * 100.0;
             let penta = format!("{penta}");
