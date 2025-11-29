@@ -174,7 +174,7 @@ impl Default for PgnOutOptions {
     }
 }
 
-fn parse_engine_option(engine: &mut EngineOptions, name: &str, value: &str) {
+fn parse_engine_option(engine: &mut EngineOptions, name: &str, value: &str) -> bool {
     match name {
         "name" => {
             engine.builder.name = Some(String::from(value));
@@ -193,6 +193,7 @@ fn parse_engine_option(engine: &mut EngineOptions, name: &str, value: &str) {
                 engine.time_control = tc;
             } else {
                 eprint!("Invalid time control specification {value}");
+                return false;
             }
         }
         "st" => {
@@ -205,6 +206,7 @@ fn parse_engine_option(engine: &mut EngineOptions, name: &str, value: &str) {
                 }
                 Err(_) => {
                     eprintln!("Expected number for st option");
+                    return false;
                 }
             }
         }
@@ -216,6 +218,7 @@ fn parse_engine_option(engine: &mut EngineOptions, name: &str, value: &str) {
                 Ok(value) => engine.time_control = tc::TimeControl::Nodes(value),
                 Err(_) => {
                     eprintln!("Expected number for st option");
+                    return false;
                 }
             }
         }
@@ -223,13 +226,22 @@ fn parse_engine_option(engine: &mut EngineOptions, name: &str, value: &str) {
             Ok(value) => engine.time_margin = Duration::from_millis(value),
             Err(_) => {
                 eprintln!("Expected number for timemargin option");
+                return false;
             }
         },
         "restart" => match value {
             "on" => engine.restart = true,
             "off" => engine.restart = false,
             _ => {
-                eprintln!("Invalid value {value} for restart engine option");
+                eprintln!("Invalid value {value} for engine restart option");
+                return false;
+            }
+        },
+        "proto" => match value {
+            "usi" => {}
+            _ => {
+                eprintln!("Invalid value {value} for engine proto option");
+                return false;
             }
         },
         name if let Some(optionname) = name.strip_prefix("option.") => {
@@ -239,10 +251,11 @@ fn parse_engine_option(engine: &mut EngineOptions, name: &str, value: &str) {
                 .push((optionname.to_string(), value.to_string()));
         }
         _ => {
-            dbg!(&name);
-            dbg!(&value);
+            eprintln!("Invalid engine option: {name}={value}");
+            return false;
         }
     }
+    true
 }
 
 pub fn parse() -> Option<CliOptions> {
@@ -277,7 +290,9 @@ pub fn parse() -> Option<CliOptions> {
                 {
                     it.next(); // consume token
 
-                    parse_engine_option(&mut engine, name, value);
+                    if !parse_engine_option(&mut engine, name, value) {
+                        return None;
+                    }
                 }
                 options.engines.push(engine);
             }
@@ -317,21 +332,28 @@ pub fn parse() -> Option<CliOptions> {
                             if let Ok(value) = value.parse::<usize>() {
                                 if value == 0 {
                                     eprint!(
-                                        "invalid opening start index {value} (must be bigger than zero)"
+                                        "invalid openings start index {value} (must be bigger than zero)"
                                     );
                                     return None;
                                 }
                                 book.start_index = value;
                             } else {
                                 eprint!(
-                                    "invalid opening start index {value} (must be unsigned integer)"
+                                    "invalid openings start index {value} (must be unsigned integer)"
                                 );
                                 return None;
                             }
                         }
+                        "format" => match value {
+                            "epd" => {}
+                            _ => {
+                                eprintln!("Invalid value {value} for openings format option");
+                                return None;
+                            }
+                        },
                         _ => {
-                            dbg!(&name);
-                            dbg!(&value);
+                            eprintln!("Unrecognised openings option {name}={value}");
+                            return None;
                         }
                     }
                 }
@@ -632,15 +654,22 @@ pub fn parse() -> Option<CliOptions> {
                 options.report_interval = None;
             }
 
+            "-recover" => {
+                // We always recover on disconnects
+            }
+
             _ => {
-                dbg!(&flag);
+                eprintln!("Unrecognised command line flag {flag}");
+                return None;
             }
         }
     }
 
     for (name, value) in each_options {
         for engine in &mut options.engines {
-            parse_engine_option(engine, &name, &value);
+            if !parse_engine_option(engine, &name, &value) {
+                return None;
+            }
         }
     }
 
