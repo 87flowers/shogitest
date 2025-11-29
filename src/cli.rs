@@ -268,7 +268,7 @@ pub fn parse() -> Option<CliOptions> {
     while let Some(flag) = it.next() {
         match flag.as_str() {
             "-version" | "--version" => {
-                println!("Shogitest version 0.0.0");
+                println!("Shogitest version 0.1.0");
                 return None;
             }
 
