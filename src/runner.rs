@@ -225,8 +225,14 @@ fn run_match(
     };
 
     let mut engine_time = [
-        tc::EngineTime::new(engine_options[ticket.engines[0]].time_control, engine_options[ticket.engines[0]].time_margin),
-        tc::EngineTime::new(engine_options[ticket.engines[1]].time_control, engine_options[ticket.engines[1]].time_margin),
+        tc::EngineTime::new(
+            engine_options[ticket.engines[0]].time_control,
+            engine_options[ticket.engines[0]].time_margin,
+        ),
+        tc::EngineTime::new(
+            engine_options[ticket.engines[1]].time_control,
+            engine_options[ticket.engines[1]].time_margin,
+        ),
     ];
 
     for i in 0..2 {
@@ -277,9 +283,9 @@ fn run_match(
 
             EngineResult::Disconnected => {
                 match_result.outcome = GameOutcome::LossByDisconnection(stm);
+                current_engine.restart()?;
             }
         };
-
 
         if match_result.outcome.is_determined() {
             return Ok(match_result);

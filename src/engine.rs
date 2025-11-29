@@ -76,6 +76,7 @@ impl EngineBuilder {
             read_buf: Vec::new(),
             stdin,
             name: self.name.clone().unwrap_or(self.cmd.to_string()),
+            builder: self.clone(),
         };
 
         engine.write_line("usi")?;
@@ -150,6 +151,7 @@ pub struct Engine {
     read_buf: Vec<u8>,
     stdin: ChildStdin,
     name: String,
+    builder: EngineBuilder,
 }
 
 impl Drop for Engine {
@@ -178,6 +180,11 @@ impl Drop for Engine {
 impl Engine {
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn restart(&mut self) -> Result<()> {
+        *self = self.builder.init()?;
+        Ok(())
     }
 
     pub fn write_line(&mut self, line: &str) -> Result<()> {
@@ -224,7 +231,11 @@ impl Engine {
         Ok(())
     }
 
-    pub fn wait_for_bestmove(&mut self, stm: crate::shogi::Color, timeout: Option<Duration>) -> EngineResult<MoveRecord> {
+    pub fn wait_for_bestmove(
+        &mut self,
+        stm: crate::shogi::Color,
+        timeout: Option<Duration>,
+    ) -> EngineResult<MoveRecord> {
         let mut mr = MoveRecord::default();
         mr.stm = Some(stm);
         match self.read_with_timeout(timeout, |line| {
