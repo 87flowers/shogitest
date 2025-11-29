@@ -53,6 +53,7 @@ fn main() -> std::io::Result<()> {
             tournament,
             &pgn,
             &cli_options.meta,
+            cli_options.engines.clone(),
             engine_names.clone(),
         )?);
     }

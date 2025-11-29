@@ -5,6 +5,7 @@ use std::io::{Error, Write};
 #[derive(Debug)]
 pub struct PgnWriter {
     file: File,
+    engine_options: Vec<cli::EngineOptions>,
     engine_names: Vec<String>,
     options: cli::PgnOutOptions,
     meta: cli::MetaDataOptions,
@@ -14,10 +15,12 @@ impl PgnWriter {
     pub fn new(
         options: &cli::PgnOutOptions,
         meta: &cli::MetaDataOptions,
+        engine_options: Vec<cli::EngineOptions>,
         engine_names: Vec<String>,
     ) -> Result<PgnWriter, Error> {
         Ok(PgnWriter {
             file: File::create_new(&options.file)?,
+            engine_options,
             engine_names,
             options: options.clone(),
             meta: meta.clone(),
@@ -49,13 +52,27 @@ impl PgnWriter {
         Self::write_header(f, "White", &self.engine_names[ticket.engines[1]])?;
         Self::write_header(f, "Gote", &self.engine_names[ticket.engines[1]])?;
         Self::write_header(f, "Result", result_str)?;
-
-        // TODO: If book pos != Startpos emit SetUp and FEN
-
+        if match_result.ticket.opening != shogi::Position::default() {
+            Self::write_header(f, "FEN", &match_result.ticket.opening.to_string())?;
+            Self::write_header(f, "SetUp", "1")?;
+        }
         Self::write_header(f, "PlyCount", &match_result.moves.len().to_string())?;
         Self::write_header(f, "Termination", match_result.outcome.to_string())?;
-
-        // TODO : "GameDuration" "GameStartTime" "GameEndTime" "PlyCount" "Termination" "TimeControl" "WhiteTimeControl" "BlackTimeControl"
+        Self::write_header(f, "GameStartTime", &match_result.game_start.to_rfc3339())?;
+        Self::write_header(
+            f,
+            "BlackTimeControl",
+            &self.engine_options[ticket.engines[0]]
+                .time_control
+                .to_string(),
+        )?;
+        Self::write_header(
+            f,
+            "WhiteTimeControl",
+            &self.engine_options[ticket.engines[1]]
+                .time_control
+                .to_string(),
+        )?;
 
         writeln!(f)?;
 

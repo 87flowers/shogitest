@@ -124,12 +124,10 @@ impl fmt::Display for TimeControl {
                 let seconds = seconds - minutes as f64 * 60.0;
 
                 if minutes > 0 {
-                    write!(f, "{minutes}m")?
+                    write!(f, "{minutes}m")?;
                 }
-                if seconds > 0.0 {
-                    write!(f, "{seconds}s")?
-                }
-                write!(f, ",{}s", byoyomi.as_secs_f64())?
+                write!(f, "{seconds}s")?;
+                write!(f, ",{}s", byoyomi.as_secs_f64())?;
             }
             TimeControl::Fischer { base, increment } => {
                 if !base.is_zero() || increment.is_zero() {
@@ -139,14 +137,12 @@ impl fmt::Display for TimeControl {
                     let seconds = seconds - minutes as f64 * 60.0;
 
                     if minutes > 0 {
-                        write!(f, "{minutes}m")?
+                        write!(f, "{minutes}m")?;
                     }
-                    if seconds > 0.0 {
-                        write!(f, "{seconds}s")?
-                    }
+                    write!(f, "{seconds}s")?;
                 }
                 if !increment.is_zero() {
-                    write!(f, "+{}s", increment.as_secs_f64())?
+                    write!(f, "+{}s", increment.as_secs_f64())?;
                 }
             }
         }

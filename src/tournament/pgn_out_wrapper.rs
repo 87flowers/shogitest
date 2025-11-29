@@ -13,11 +13,12 @@ impl PgnOutWrapper {
         inner: Box<dyn Tournament>,
         options: &cli::PgnOutOptions,
         meta: &cli::MetaDataOptions,
+        engine_options: Vec<cli::EngineOptions>,
         engine_names: Vec<String>,
     ) -> Result<PgnOutWrapper, std::io::Error> {
         Ok(PgnOutWrapper {
             inner,
-            pgn: pgn::PgnWriter::new(options, meta, engine_names)?,
+            pgn: pgn::PgnWriter::new(options, meta, engine_options, engine_names)?,
         })
     }
 }
