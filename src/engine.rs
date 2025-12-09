@@ -1,7 +1,7 @@
 use crate::shogi;
 use log::{error, info, trace};
 use std::{
-    env,
+    path::Path,
     io::{Result, Write},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
     time::Duration,
@@ -56,10 +56,13 @@ pub struct EngineBuilder {
 
 impl EngineBuilder {
     pub fn init(&self) -> Result<Engine> {
-        let working_directory = env::current_dir()?.join(&self.dir);
+        let cmd = if self.dir.is_empty() {
+            Path::new(&self.cmd).to_path_buf()
+        } else {
+            Path::new(&self.dir).join(&self.cmd)
+        };
 
-        let mut child = Command::new(&self.cmd)
-            .current_dir(working_directory)
+        let mut child = Command::new(&cmd)
             .stdout(Stdio::piped())
             .stdin(Stdio::piped())
             .spawn()?;
